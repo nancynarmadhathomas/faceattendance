@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dashboard — {{ emp.name }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+</head>
+<body class="dash-body">
+
+{# ── Pre-compute values safely ── #}
+{% if today %}
+  {% set today_str = fmt_date(today.date) %}
+  {% set checked_out = today.check_out %}
+  {% set today_hours = today.working_hours %}
+  {% set today_status = today.status %}
+  {% set today_checkin = today.check_in %}
+  {% set today_checkout = today.check_out %}
+  {% set late_reason = today.late_reason %}
+{% else %}
+  {% set today_str = '' %}
+  {% set checked_out = None %}
+  {% set today_hours = 0 %}
+  {% set today_status = 'absent' %}
+  {% set today_checkin = None %}
+  {% set today_checkout = None %}
+  {% set late_reason = '' %}
+{% endif %}
+
+{# Filter today's meetings #}
+{% set today_meets = [] %}
+{% for m in meetings %}
+  {% if m.meeting_date == today_str %}
+    {% set today_meets = today_meets + [m] %}
+  {% endif %}
+{% endfor %}
+
+<!-- ═══════════════════════════ SIDEBAR ═══════════════════════════ -->
+<aside class="sidebar">
+
+  <div class="sidebar-profile">
+    <div class="profile-photo-wrap">
+      <img id="profile-img"
+           src="{{ url_for('static', filename='uploads/' + emp.employee_id + '.jpg') }}"
+           onerror="this.style.display='none';document.getElementById('profile-initials').style.display='flex'"
+           alt="Profile">
+      <div id="profile-initials" class="profile-initials" style="display:none">
+        {{ emp.name[0]|upper }}
+      </div>
+    </div>
+    <div class="profile-name">{{ emp.name }}</div>
+    <div class="profile-id">{{ emp.employee_id }}</div>
+
+    {% if today_status == 'present' %}
+      <div class="profile-status s-present"><span style="width:8px;height:8px;background:#10b981;border-radius:50%;display:inline-block;margin-right:5px"></span>Present</div>
+    {% elif today_status == 'late' %}
+      <div class="profile-status s-late"><span style="width:8px;height:8px;background:#f59e0b;border-radius:50%;display:inline-block;margin-right:5px"></span>Late</div>
+    {% else %}
+      <div class="profile-status s-absent"><span style="width:8px;height:8px;background:#ef4444;border-radius:50%;display:inline-block;margin-right:5px"></span>Not checked in</div>
+    {% endif %}
+  </div>
+
+  <nav class="sidebar-nav">
+    <a class="nav-item active" onclick="showSection('overview',this)">
+      <span class="nav-icon"><i data-lucide="layout-dashboard" style="width:16px;height:16px"></i></span> Overview
+    </a>
+    <a class="nav-item" onclick="showSection('attendance',this)">
+      <span class="nav-icon"><i data-lucide="clipboard-list" style="width:16px;height:16px"></i></span> Attendance
+    </a>
+    <a class="nav-item" onclick="showSection('meetings',this)">
+      <span class="nav-icon"><i data-lucide="calendar" style="width:16px;height:16px"></i></span> Meetings
+      {% if today_meets %}<span class="nav-badge">{{ today_meets|length }}</span>{% endif %}
+    </a>
+    <a class="nav-item" onclick="showSection('leave-sec',this)">
+      <span class="nav-icon"><i data-lucide="umbrella" style="width:16px;height:16px"></i></span> Leave Request
+      {% set pending_leaves = leave_reqs | selectattr('status','eq','Pending') | list %}
+      {% if pending_leaves %}<span class="nav-badge" style="background:#f59e0b">{{ pending_leaves|length }}</span>{% endif %}
+    </a>
+    <a class="nav-item" onclick="showSection('profile-sec',this)">
+      <span class="nav-icon"><i data-lucide="user" style="width:16px;height:16px"></i></span> My Profile
+    </a>
+  </nav>
+
+  <div class="sidebar-footer">
+    <a href="/logout" class="nav-item nav-logout">
+      <span class="nav-icon"><i data-lucide="log-out" style="width:16px;height:16px"></i></span> Logout
+    </a>
+  </div>
+</aside>
+
+<!-- ═══════════════════════════ MAIN ═══════════════════════════ -->
+<main class="dash-main">
+
+  <!-- Topbar — 3-column: greeting | datetime | status+action -->
+  <div class="topbar">
+
+    <!-- LEFT: Greeting -->
+    <div>
+      <div class="topbar-title">Good day, <strong>{{ emp.name.split(' ')[0] }}</strong></div>
+    </div>
+
+    <!-- CENTER: Live date & time -->
+    <div>
+      <div style="font-size:.78rem;color:var(--muted);text-align:center;letter-spacing:.04em" id="live-date"></div>
+      <div style="font-size:1.1rem;font-family:monospace;font-weight:700;text-align:center;letter-spacing:.08em" id="live-time"></div>
+    </div>
+
+    <!-- RIGHT: Today status + clock action + theme toggle -->
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
+      <!-- Theme Toggle -->
+      <button id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Light/Dark Mode"
+              style="background:none;border:1px solid var(--border);border-radius:20px;padding:4px 10px;cursor:pointer;font-size:.75rem;font-weight:600;color:var(--muted);display:flex;align-items:center;gap:5px;transition:all .2s">
+        <span id="theme-icon"><i data-lucide="sun" style="width:14px;height:14px"></i></span>
+        <span id="theme-label">Light Mode</span>
+      </button>
+
+      {% if today_status == 'present' %}
+        <span style="font-size:.78rem;font-weight:600;color:#10b981">● Present</span>
+      {% elif today_status == 'late' %}
+        <span style="font-size:.78rem;font-weight:600;color:#f59e0b">● Late</span>
+      {% else %}
+        <span style="font-size:.78rem;font-weight:600;color:#ef4444">● Not Checked In</span>
+      {% endif %}
+      {% if not today %}
+        <button id="checkin-btn" onclick="doCheckin()" class="btn-checkout" style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;border-color:transparent">
+          <i data-lucide="clock" style="width:14px;height:14px;vertical-align:middle;margin-right:4px"></i>Clock In
+        </button>
+      {% elif today and not checked_out %}
+        <button id="checkout-btn" onclick="doCheckout()" class="btn-checkout">
+          <i data-lucide="log-out" style="width:14px;height:14px;vertical-align:middle;margin-right:4px"></i>Clock Out
+        </button>
+      {% elif today and checked_out %}
+        <div class="badge-pill badge-muted">Clocked out · {{ fmt_time(checked_out) }}</div>
+      {% endif %}
+    </div>
+
+
+  </div>
+
+
+  <!-- ════════ OVERVIEW ════════ -->
+  <section id="overview" class="dash-section">
+
+    <!-- §1 TODAY SUMMARY BANNER -->
+    <div class="dash-card" style="margin-bottom:20px;border-left:3px solid var(--accent)">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px;align-items:center">
+        <div>
+          <div class="stat-label">Today Status</div>
+          <span class="pill pill-{{ today_status or 'absent' }}" style="margin-top:6px;display:inline-block">
+            {{ (today_status or 'absent')|title }}
+          </span>
+        </div>
+        <div>
+          <div class="stat-label">Check-In Time</div>
+          <div class="stat-val" style="font-size:1rem;margin-top:4px">{{ fmt_time(today_checkin) }}</div>
+        </div>
+        <div>
+          <div class="stat-label">Working Hours</div>
+          <div class="stat-val" style="font-size:1rem;margin-top:4px" id="live-hours">{{ today_hours or '0' }}h</div>
+        </div>
+        <div>
+          <div class="stat-label">Shift Timing</div>
+          <div style="font-size:.9rem;font-weight:600;margin-top:4px;font-family:monospace">9:30 AM – 6:30 PM</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- §7 WORKING HOURS PROGRESS -->
+    {% if today_checkin %}
+    <div class="dash-card" style="margin-bottom:20px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span class="card-title" style="font-size:.9rem"><i data-lucide="timer" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Today's Work Progress</span>
+        <span class="card-sub" id="progress-label">{{ today_hours or 0 }} / 9 hrs</span>
+      </div>
+      {% set prog = ((today_hours or 0)|float / 9 * 100)|int %}
+      {% set prog = [prog, 100]|min %}
+      <div style="background:var(--border);border-radius:999px;height:10px;overflow:hidden">
+        <div id="work-progress-bar" style="height:100%;border-radius:999px;width:{{ prog }}%;
+          background:{% if prog >= 90 %}var(--success){% elif prog >= 50 %}var(--accent){% else %}var(--warn){% endif %};
+          transition:width .5s ease"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:.72rem;color:var(--muted)">
+        <span>0h</span><span>4.5h</span><span>9h (full day)</span>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- §5 QUICK ACTIONS -->
+    <div class="dash-card" style="margin-bottom:20px">
+      <div class="card-title" style="margin-bottom:14px"><i data-lucide="zap" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Quick Actions</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        {% if not today %}
+        <button onclick="doCheckin()" class="btn-checkout"
+                style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;border-color:transparent;border-radius:10px;padding:8px 16px;font-size:.85rem;font-weight:600;cursor:pointer">
+          <i data-lucide="clock" style="width:14px;height:14px;vertical-align:middle;margin-right:4px"></i>Clock In
+        </button>
+        {% elif today and not checked_out %}
+        <button onclick="doCheckout()" class="btn-checkout"
+                style="border-radius:10px;padding:8px 16px;font-size:.85rem;font-weight:600">
+          <i data-lucide="log-out" style="width:14px;height:14px;vertical-align:middle;margin-right:4px"></i>Clock Out
+        </button>
+        {% endif %}
+        <button onclick="showSection('leave-sec', document.querySelector('[onclick*=leave-sec]'))"
+                style="background:rgba(99,102,241,.12);color:var(--accent);border:1px solid rgba(99,102,241,.25);border-radius:10px;padding:8px 16px;font-size:.85rem;font-weight:600;cursor:pointer">
+          <i data-lucide="umbrella" style="width:14px;height:14px;vertical-align:middle;margin-right:4px"></i>Apply Leave
+        </button>
+        <button onclick="showSection('attendance', document.querySelector('[onclick*=attendance]'))"
+                style="background:rgba(16,185,129,.1);color:var(--success);border:1px solid rgba(16,185,129,.2);border-radius:10px;padding:8px 16px;font-size:.85rem;font-weight:600;cursor:pointer">
+          <i data-lucide="clipboard-list" style="width:14px;height:14px;vertical-align:middle;margin-right:4px"></i>View Attendance
+        </button>
+        <button onclick="showSection('meetings', document.querySelector('[onclick*=meetings]'))"
+                style="background:rgba(245,158,11,.1);color:var(--warn);border:1px solid rgba(245,158,11,.2);border-radius:10px;padding:8px 16px;font-size:.85rem;font-weight:600;cursor:pointer">
+          <i data-lucide="calendar" style="width:14px;height:14px;vertical-align:middle;margin-right:4px"></i>View Meetings
+        </button>
+      </div>
+    </div>
+
+    <!-- §2 ATTENDANCE STATS -->
+    <div class="stats-row" style="margin-bottom:20px">
+      <div class="stat-tile" style="--c:#10b981">
+        <div class="stat-icon"><i data-lucide="user-check" style="width:20px;height:20px;color:#10b981"></i></div>
+        <div class="stat-body">
+          <div class="stat-label">Present (Month)</div>
+          <div class="stat-val">{{ monthly.present }}</div>
+        </div>
+      </div>
+      <div class="stat-tile" style="--c:#f59e0b">
+        <div class="stat-icon"><i data-lucide="alert-triangle" style="width:20px;height:20px;color:#f59e0b"></i></div>
+        <div class="stat-body">
+          <div class="stat-label">Late (Month)</div>
+          <div class="stat-val">{{ monthly.late }}</div>
+        </div>
+      </div>
+      <div class="stat-tile" style="--c:#6366f1">
+        <div class="stat-icon"><i data-lucide="umbrella" style="width:20px;height:20px;color:#6366f1"></i></div>
+        <div class="stat-body">
+          <div class="stat-label">Leaves Taken</div>
+          <div class="stat-val">{{ leave_reqs | selectattr('status','eq','Approved') | list | length }}</div>
+        </div>
+      </div>
+      <div class="stat-tile" style="--c:#8b5cf6">
+        <div class="stat-icon"><i data-lucide="bar-chart-2" style="width:20px;height:20px;color:#8b5cf6"></i></div>
+        <div class="stat-body">
+          <div class="stat-label">Attendance %</div>
+          <div class="stat-val">{{ monthly.pct }}%</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mid grid: chart + §3 Upcoming Meetings -->
+    <div class="mid-grid" style="margin-bottom:20px">
+
+      <!-- Bar chart -->
+      <div class="dash-card">
+        <div class="card-header">
+          <span class="card-title"><i data-lucide="trending-up" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Weekly Activity</span>
+          <span class="card-sub">Last 7 entries</span>
+        </div>
+        <div class="bar-chart">
+          {% set recent7 = history[:7] | reverse | list %}
+          {% if recent7 %}
+            {% for r in recent7 %}
+              {% set hrs = (r.working_hours or 0) | float %}
+              {% set pct = (hrs / 9 * 100) | int %}
+              {% if pct > 100 %}{% set pct = 100 %}{% endif %}
+              {% if pct < 4 and hrs > 0 %}{% set pct = 4 %}{% endif %}
+              <div class="bar-col">
+                <div class="bar-tooltip">{{ hrs }}h</div>
+                {% if r.status == 'late' %}
+                  <div class="bar" style="height:{{ pct }}%;background:var(--warn)"></div>
+                {% else %}
+                  <div class="bar" style="height:{{ pct }}%"></div>
+                {% endif %}
+                <div class="bar-label">{{ fmt_date(r.date)[-5:] }}</div>
+              </div>
+            {% endfor %}
+          {% else %}
+            <p class="text-muted" style="align-self:center;padding:20px;font-size:.8rem">No activity data yet</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- §3 Upcoming Meetings -->
+      <div class="dash-card">
+        <div class="card-header">
+          <span class="card-title"><i data-lucide="calendar" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Upcoming Meetings</span>
+          <span class="card-sub">{{ upcoming|length }} upcoming</span>
+        </div>
+        {% if upcoming %}
+          {% for m in upcoming %}
+            <div class="meet-item">
+              <div class="meet-dot" style="{% if m.meeting_date == today_date %}background:var(--success){% endif %}"></div>
+              <div style="min-width:0">
+                <div class="meet-time">{{ m.meeting_date }} · {{ m.meeting_time }}</div>
+                <div class="meet-name">{{ m.title }}</div>
+                {% if m.description %}<div class="meet-desc">{{ m.description }}</div>{% endif %}
+              </div>
+            </div>
+          {% endfor %}
+        {% else %}
+          <div class="empty-state">
+            <div style="font-size:2.5rem;margin-bottom:8px">📭</div>
+            <p>No upcoming meetings</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- §4 LEAVE BALANCE + §9 NOTIFICATIONS -->
+    <div class="mid-grid" style="margin-bottom:20px">
+
+      <!-- Leave Balance -->
+      <div class="dash-card">
+        <div class="card-header">
+          <span class="card-title"><i data-lucide="umbrella" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Leave Balance</span>
+          <span class="card-sub">Annual allocation</span>
+        </div>
+        {% for lt, bal in leave_bal.items() %}
+        <div style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;font-size:.8rem;margin-bottom:4px">
+            <span>{{ lt }}</span>
+            <span style="font-weight:600;color:{% if bal.remaining <= 2 %}var(--danger){% elif bal.remaining <= 5 %}var(--warn){% else %}var(--success){% endif %}">
+              {{ bal.remaining }} / {{ bal.limit }} left
+            </span>
+          </div>
+          <div style="background:var(--border);border-radius:999px;height:6px">
+            {% set bp = ((bal.used / bal.limit) * 100)|int %}
+            <div style="height:100%;width:{{ bp }}%;border-radius:999px;
+              background:{% if bp >= 80 %}var(--danger){% elif bp >= 50 %}var(--warn){% else %}var(--accent){% endif %};
+              transition:width .5s"></div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- §9 Notifications -->
+      <div class="dash-card">
+        <div class="card-header">
+          <span class="card-title"><i data-lucide="bell" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Notifications</span>
+          <span class="card-sub">{{ notifs|length }} alert(s)</span>
+        </div>
+        {% for n in notifs %}
+        <div style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border)">
+          <span style="flex-shrink:0;opacity:0.8"><i data-lucide="{{ n.icon }}" style="width:16px;height:16px"></i></span>
+          <span style="font-size:.83rem;
+            color:{% if n.type=='success' %}var(--success){% elif n.type=='danger' %}var(--danger){% elif n.type=='warn' %}var(--warn){% elif n.type=='info' %}var(--accent){% else %}var(--muted){% endif %}">
+            {{ n.text }}
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- §6 RECENT ACTIVITY + §8 PROFILE MINI CARD -->
+    <div class="mid-grid" style="margin-bottom:20px">
+
+      <!-- Recent Activity -->
+      <div class="dash-card">
+        <div class="card-header">
+          <span class="card-title"><i data-lucide="activity" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Recent Activity</span>
+          <span class="card-sub">Last 5 records</span>
+        </div>
+        {% for r in history[:5] %}
+        <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+          <div style="width:8px;height:8px;border-radius:50%;flex-shrink:0;
+            background:{% if r.status=='present' %}var(--success){% elif r.status=='late' %}var(--warn){% else %}var(--danger){% endif %}">
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:.85rem;font-weight:500">{{ fmt_date(r.date) }}</div>
+            <div style="font-size:.75rem;color:var(--muted)">
+              In: {{ fmt_time(r.check_in) }}
+              {% if r.check_out %} · Out: {{ fmt_time(r.check_out) }}{% endif %}
+              {% if r.working_hours %} · {{ r.working_hours }}h{% endif %}
+            </div>
+          </div>
+          <span class="pill pill-{{ r.status }}" style="font-size:.68rem">{{ r.status|title }}</span>
+        </div>
+        {% else %}
+        <div class="empty-state">No activity records yet</div>
+        {% endfor %}
+      </div>
+
+      <!-- §8 Profile Mini Card -->
+      <div class="dash-card">
+        <div class="card-header">
+          <span class="card-title"><i data-lucide="user" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>My Profile</span>
+          <button onclick="showSection('profile-sec', document.querySelector('[onclick*=profile-sec]'))" class="view-all-btn">Edit →</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
+          <div class="profile-photo-wrap" style="width:60px;height:60px;flex-shrink:0">
+            {% if emp.face_image %}
+              <img src="/face-image/{{ emp.employee_id }}" alt="face">
+            {% else %}
+              <div class="profile-initials">{{ emp.name[0]|upper }}</div>
+            {% endif %}
+          </div>
+          <div>
+            <div style="font-weight:700;font-size:1rem">{{ emp.name }}</div>
+            <div style="font-size:.72rem;color:var(--accent);font-family:monospace;margin-top:2px">{{ emp.employee_id }}</div>
+          </div>
+        </div>
+        <div style="font-size:.8rem">
+          <div class="info-row" style="padding:8px 0"><span>Email</span><strong>{{ emp.email or '—' }}</strong></div>
+          <div class="info-row" style="padding:8px 0"><span>Role</span><strong>{{ (emp.role or 'Employee')|title }}</strong></div>
+          <div class="info-row" style="padding:8px 0;border:none"><span>This Month</span><strong>{{ monthly.present }} present · {{ monthly.late }} late</strong></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- §10 ATTENDANCE HISTORY (Last 7 days) -->
+    <div class="dash-card mt-4">
+      <div class="card-header">
+        <span class="card-title"><i data-lucide="clipboard-list" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Recent Attendance</span>
+        <button onclick="showSection('attendance',null)" class="view-all-btn">View All →</button>
+      </div>
+      <table class="dash-table">
+        <thead>
+          <tr>
+            <th>Date</th><th>Check In</th><th>Check Out</th><th>Hours</th><th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in history[:7] %}
+          <tr>
+            <td>{{ fmt_date(r.date) }}</td>
+            <td class="mono text-green">{{ fmt_time(r.check_in) }}</td>
+            <td class="mono text-muted">{{ fmt_time(r.check_out) }}</td>
+            <td><strong>{{ r.working_hours or '—' }}{% if r.working_hours %}h{% endif %}</strong></td>
+            <td><span class="pill pill-{{ r.status }}">{{ r.status|title }}</span></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="empty-row">No records yet. Check in to start tracking.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+
+  <!-- ════════ ATTENDANCE ════════ -->
+  <section id="attendance" class="dash-section hidden">
+    <div class="dash-card">
+      <div class="card-header">
+        <span class="card-title"><i data-lucide="clipboard-list" style="width:16px;height:16px;vertical-align:middle;margin-right:8px"></i>Full Attendance History</span>
+        <span class="card-sub">{{ history|length }} total records</span>
+      </div>
+      <table class="dash-table">
+        <thead>
+          <tr>
+            <th>#</th><th>Date</th><th>Check In</th><th>Check Out</th>
+            <th>Hours</th><th>Status</th><th>Late Reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in history %}
+          <tr>
+            <td class="text-muted" style="font-size:.8rem">{{ loop.index }}</td>
+            <td>{{ fmt_date(r.date) }}</td>
+            <td class="mono text-green">{{ fmt_time(r.check_in) }}</td>
+            <td class="mono text-muted">{{ fmt_time(r.check_out) }}</td>
+            <td><strong>{{ r.working_hours or '—' }}{% if r.working_hours %}h{% endif %}</strong></td>
+            <td><span class="pill pill-{{ r.status }}">{{ r.status|title }}</span></td>
+            <td class="text-muted" style="font-size:.8rem">{{ r.late_reason or '—' }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="empty-row">No attendance records found</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ════════ MEETINGS ════════ -->
+  <section id="meetings" class="dash-section hidden">
+    {% if meetings %}
+      <div class="meetings-grid">
+        {% for m in meetings %}
+          {% if m.meeting_date == today_str %}
+            {% set card_class = 'meet-card meet-today' %}
+          {% else %}
+            {% set card_class = 'meet-card' %}
+          {% endif %}
+          <div class="{{ card_class }}">
+            <div class="meet-card-date"><i data-lucide="calendar" style="width:12px;height:12px;vertical-align:middle;margin-right:4px"></i>{{ m.meeting_date }}</div>
+            <div class="meet-card-time"><i data-lucide="clock" style="width:12px;height:12px;vertical-align:middle;margin-right:4px"></i>{{ m.meeting_time }}</div>
+            <div class="meet-card-title">{{ m.title }}</div>
+            {% if m.description %}<div class="meet-card-desc">{{ m.description }}</div>{% endif %}
+            <div class="meet-card-who">
+              {% if m.employee_id and m.employee_id == emp.employee_id %}
+                <i data-lucide="user" style="width:12px;height:12px;vertical-align:middle;margin-right:4px"></i>Assigned to you
+              {% else %}
+                <i data-lucide="users" style="width:12px;height:12px;vertical-align:middle;margin-right:4px"></i>All employees
+              {% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state" style="padding:80px">
+        <div style="margin-bottom:12px"><i data-lucide="inbox" style="width:48px;height:48px;color:var(--muted)"></i></div>
+        <p>No meetings scheduled</p>
+      </div>
+    {% endif %}
+  </section>
+
+  <!-- ════════ PROFILE ════════ -->
+  <section id="profile-sec" class="dash-section hidden">
+    <div class="profile-grid">
+
+      <!-- Photo card -->
+      <div class="dash-card" style="text-align:center">
+        <div class="profile-photo-lg">
+          <img src="{{ url_for('static', filename='uploads/' + emp.employee_id + '.jpg') }}"
+               onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"
+               alt="Profile">
+          <div class="profile-initials-lg" style="display:none">{{ emp.name[0]|upper }}</div>
+        </div>
+        <div style="font-size:1.2rem;font-weight:700;margin-bottom:6px">{{ emp.name }}</div>
+        <div style="margin-top:12px">
+          <span class="pill pill-{{ today_status }}">{{ today_status|title }}</span>
+        </div>
+        {% if late_reason %}
+        <div style="margin-top:16px;padding:12px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:10px;font-size:.8rem;color:var(--warn);text-align:left">
+          <strong>Late Reason:</strong> {{ late_reason }}
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Info card -->
+      <div class="dash-card">
+        <div class="card-title" style="margin-bottom:20px">Profile Information</div>
+        <div class="info-row"><span>Employee ID</span>    <strong>{{ emp.employee_id }}</strong></div>
+        <div class="info-row"><span>Full Name</span>      <strong>{{ emp.name }}</strong></div>
+        <div class="info-row"><span>Email</span>          <strong>{{ emp.email or '—' }}</strong></div>
+        <div class="info-row"><span>Role</span>           <strong>{{ (emp.role or 'employee')|title }}</strong></div>
+        <div class="info-row"><span>Member Since</span>   <strong>{{ fmt_date(emp.created_at) }}</strong></div>
+
+        <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
+          <div class="card-title" style="margin-bottom:16px">Today's Summary</div>
+          <div class="info-row"><span>Check In</span>      <strong class="text-green">{{ fmt_time(today_checkin) }}</strong></div>
+          <div class="info-row"><span>Check Out</span>     <strong>{{ fmt_time(today_checkout) }}</strong></div>
+          <div class="info-row"><span>Hours Worked</span>  <strong>{{ today_hours or '0' }}h</strong></div>
+          <div class="info-row"><span>Status</span>        <span class="pill pill-{{ today_status }}">{{ today_status|title }}</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════ LEAVE REQUEST ════════ -->
+  <section id="leave-sec" class="dash-section hidden">
+
+    <!-- Submit new leave -->
+    <div class="dash-card" style="margin-bottom:20px">
+      <div class="card-header">
+        <span class="card-title"><i data-lucide="umbrella" style="width:16px;height:16px;vertical-align:middle;margin-right:8px"></i>Submit Leave Request</span>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label>Leave Type *</label>
+          <select id="leave-type" class="form-control">
+            <option value="">— Select Type —</option>
+            <option value="Casual Leave">Casual Leave</option>
+            <option value="Sick Leave">Sick Leave</option>
+            <option value="Half Day">Half Day</option>
+            <option value="Permission">Permission</option>
+            <option value="Work From Home">Work From Home</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Reason</label>
+          <input id="leave-reason" class="form-control" placeholder="Brief reason (optional)">
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label>From Date *</label>
+          <input id="leave-from" type="date" class="form-control">
+        </div>
+        <div class="form-group">
+          <label>To Date *</label>
+          <input id="leave-to" type="date" class="form-control">
+        </div>
+      </div>
+      <div id="leave-msg" class="toast" style="display:none;margin-bottom:12px"></div>
+      <button id="leave-submit-btn" onclick="submitLeaveRequest()" class="btn btn-primary">Submit Request</button>
+    </div>
+
+    <!-- Leave history -->
+    <div class="dash-card">
+      <div class="card-header">
+        <span class="card-title">My Leave Requests</span>
+        <span class="card-sub">{{ leave_reqs|length }} total</span>
+      </div>
+      <table class="dash-table">
+        <thead>
+          <tr>
+            <th>Type</th><th>From</th><th>To</th><th>Reason</th><th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for lr in leave_reqs %}
+          <tr>
+            <td><strong>{{ lr.leave_type }}</strong></td>
+            <td class="mono">{{ lr.from_date }}</td>
+            <td class="mono">{{ lr.to_date }}</td>
+            <td class="text-muted" style="font-size:.8rem">{{ lr.reason or '—' }}</td>
+            <td>
+              {% if lr.status == 'Approved' %}
+                <span class="pill pill-present">Approved</span>
+              {% elif lr.status == 'Rejected' %}
+                <span class="pill pill-absent">Rejected</span>
+              {% else %}
+                <span class="pill pill-late">Pending</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="empty-row">No leave requests submitted yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<!-- ====== CLOCK-IN LATE REASON MODAL ====== -->
+<div id="late-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <div style="margin-bottom:8px"><i data-lucide="clock" style="width:48px;height:48px;color:var(--warn)"></i></div>
+    <h3>You're Running Late</h3>
+    <p>Office hours start at 9:30 AM. Please select a reason.</p>
+    <div class="form-group" style="margin-top:16px">
+      <label>Reason for Late Arrival</label>
+      <select id="late-reason-select" class="form-control" style="margin-top:6px">
+        <option value="">— Select a reason —</option>
+        <option value="Traffic">Traffic</option>
+        <option value="Health Issue">Health Issue</option>
+        <option value="Personal Work">Personal Work</option>
+        <option value="Transport Delay">Transport Delay</option>
+        <option value="Emergency">Emergency</option>
+        <option value="Other">Other</option>
+      </select>
+    </div>
+    <button id="late-confirm-btn" onclick="confirmLateReason()" class="btn btn-primary btn-block" style="margin-top:8px">Confirm &amp; Clock In</button>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+
+</body>
+</html>

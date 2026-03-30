@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sign In — Face Attendance</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<div class="login-grid">
+  <!-- Left brand panel -->
+  <div class="login-left">
+    <div style="text-align:center">
+      <div style="font-size:4rem;margin-bottom:16px">👁️</div>
+      <h1 style="font-size:2rem;font-weight:700;margin-bottom:12px">Face Attendance</h1>
+      <p style="color:#94a3b8;max-width:320px;line-height:1.6">
+        Secure, fast biometric attendance tracking. Look at the camera and you're in.
+      </p>
+    </div>
+    <div style="display:flex;gap:32px;margin-top:16px">
+      <div style="text-align:center">
+        <div style="font-size:1.5rem;font-weight:700;color:#6366f1">&lt;1s</div>
+        <div style="font-size:.75rem;color:#64748b">Login Time</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:1.5rem;font-weight:700;color:#10b981">99%</div>
+        <div style="font-size:.75rem;color:#64748b">Accuracy</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:1.5rem;font-weight:700;color:#f59e0b">No Touch</div>
+        <div style="font-size:.75rem;color:#64748b">Required</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right login panel -->
+  <div class="login-right">
+    <div id="face-section">
+      <h2 style="font-size:1.5rem;font-weight:700;margin-bottom:6px">Good day! 👋</h2>
+      <p class="text-muted" style="margin-bottom:28px;font-size:.9rem">Look at the camera to sign in.</p>
+
+      <div class="camera-wrap">
+        <div class="camera-ring">
+          <video id="video" autoplay muted playsinline></video>
+          <div class="scan-bar"></div>
+        </div>
+        <p class="camera-hint">"Align your face inside the circle"</p>
+      </div>
+
+      <div id="toast" class="toast toast-info mt-4" style="display:none"></div>
+
+      <!-- Register prompt shown when face not found -->
+      <div id="register-prompt" style="display:none;margin-top:16px;padding:16px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:12px;text-align:center">
+        <p style="font-size:.875rem;color:#f87171;margin-bottom:12px">😕 Your face is not registered yet.</p>
+        <a href="/register" class="btn btn-primary btn-sm" style="display:inline-flex">📝 Register Now</a>
+      </div>
+
+      <div style="margin-top:24px;text-align:center">
+        <button id="capture-btn" class="btn btn-primary btn-block">📷 Verify Face</button>
+      </div>
+
+      <div style="margin-top:16px;text-align:center">
+        <p style="font-size:.85rem;color:var(--muted)">New employee? 
+          <a href="/register" style="color:var(--primary-light);font-weight:600">Register here</a>
+        </p>
+        <p style="font-size:.85rem;color:var(--muted);margin-top:8px">Admin? 
+          <a href="#" onclick="showAdminLogin()" style="color:var(--primary-light);font-weight:600">Admin Login</a>
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Late Reason Modal -->
+<div id="late-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <div style="font-size:2rem;margin-bottom:8px">⏰</div>
+    <h3>You're Running Late</h3>
+    <p>Office hours start at 9:30 AM. Please select a reason for being late.</p>
+    <div class="form-group">
+      <label>Reason for Late Arrival</label>
+      <select id="late-reason" class="form-control">
+        <option value="">— Select a reason —</option>
+        <option value="Traffic">🚗 Traffic</option>
+        <option value="Health Issue">🏥 Health Issue</option>
+        <option value="Personal Work">💼 Personal Work</option>
+        <option value="Transport Delay">🚌 Transport Delay</option>
+        <option value="Emergency">🚨 Emergency</option>
+        <option value="Other">📝 Other</option>
+      </select>
+    </div>
+    <button onclick="submitLateReason()" class="btn btn-primary btn-block" id="late-submit-btn">Submit &amp; Continue</button>
+  </div>
+</div>
+
+<!-- Admin Login Modal -->
+<div id="admin-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <h3 style="margin-bottom:20px">🔐 Admin Login</h3>
+    <div class="form-group">
+      <label>Username</label>
+      <input type="text" id="admin-user" class="form-control" placeholder="admin" value="admin">
+    </div>
+    <div class="form-group">
+      <label>Password</label>
+      <input type="password" id="admin-pass" class="form-control" placeholder="••••••••" value="admin123">
+    </div>
+    <div id="admin-err" style="color:var(--danger);font-size:.85rem;margin-bottom:12px;display:none"></div>
+    <div style="display:flex;gap:10px">
+      <button onclick="submitAdminLogin()" class="btn btn-primary" style="flex:1">Login</button>
+      <button onclick="document.getElementById('admin-modal').classList.add('hidden')" class="btn btn-ghost">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/login.js') }}"></script>
+</body>
+</html>

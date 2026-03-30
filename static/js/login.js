@@ -1,0 +1,125 @@
+// ── Camera ──────────────────────────────────────────────────────
+const video = document.getElementById('video');
+let stream;
+
+async function startCamera() {
+  const constraints = { 
+    video: { 
+      width: { ideal: 640 }, 
+      height: { ideal: 640 }, 
+      facingMode: 'user' 
+    } 
+  };
+  
+  try {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error('Browser does not support camera access or not in a secure context.');
+    }
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject = stream;
+    video.onloadedmetadata = () => video.play();
+  } catch(e) {
+    console.error("Camera Error:", e);
+    // Generic fallback for older browsers or strict environments
+    try {
+      console.log("Retrying with simple constraints...");
+      stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      video.srcObject = stream;
+      video.onloadedmetadata = () => video.play();
+    } catch(e2) {
+      showToast('Camera access denied. Please allow camera permissions in your browser settings.', 'danger');
+      document.getElementById('capture-btn').disabled = true;
+    }
+  }
+}
+
+function stopCamera() {
+  if (stream) stream.getTracks().forEach(t => t.stop());
+}
+
+// ── Capture ──────────────────────────────────────────────────────
+document.getElementById('capture-btn').onclick = captureAndVerify;
+
+async function captureAndVerify() {
+  const btn = document.getElementById('capture-btn');
+  btn.disabled = true;
+  btn.textContent = '🔄 Verifying...';
+  showToast('Analyzing face...', 'info');
+
+  const canvas = document.createElement('canvas');
+  canvas.width  = video.videoWidth  || 640;
+  canvas.height = video.videoHeight || 640;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  const imageData = canvas.toDataURL('image/jpeg', 0.85);
+
+  try {
+    const res = await fetch('/api/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: imageData })
+    });
+    const result = await res.json();
+
+    if (result.success) {
+      stopCamera();
+      showToast(`✅ Welcome, ${result.name}! Redirecting...`, 'success');
+      // FIX: Login only — no late check, no attendance here
+      setTimeout(() => window.location.href = result.redirect, 1000);
+    } else {
+      showToast('❌ ' + (result.message || 'Face not recognized.'), 'danger');
+      // Show register prompt if face not registered
+      if (result.message && result.message.toLowerCase().includes('not registered')) {
+        document.getElementById('register-prompt').style.display = 'block';
+      }
+      btn.disabled = false;
+      btn.textContent = '📷 Verify Face';
+    }
+  } catch(e) {
+    showToast('Server error. Please try again.', 'danger');
+    btn.disabled = false;
+    btn.textContent = '📷 Verify Face';
+  }
+}
+
+// ── Late reason ──────────────────────────────────────────────────
+async function submitLateReason() {
+  const reason = document.getElementById('late-reason').value.trim();
+  if (!reason) { alert('Please select a reason.'); return; }
+  const btn = document.getElementById('late-submit-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Submitting...';
+  await fetch('/api/late-reason', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ reason })
+  });
+  window.location.href = window._redirect || '/dashboard';
+}
+
+// ── Admin login ──────────────────────────────────────────────────
+function showAdminLogin() { document.getElementById('admin-modal').classList.remove('hidden'); }
+
+async function submitAdminLogin() {
+  const u = document.getElementById('admin-user').value;
+  const p = document.getElementById('admin-pass').value;
+  const res = await fetch('/admin/login', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ username:u, password:p })
+  });
+  const result = await res.json();
+  if (result.success) {
+    window.location.href = result.redirect;
+  } else {
+    document.getElementById('admin-err').style.display = 'block';
+    document.getElementById('admin-err').textContent = result.message;
+  }
+}
+
+// ── Toast helper ─────────────────────────────────────────────────
+function showToast(msg, type='info') {
+  const t = document.getElementById('toast');
+  t.className = `toast toast-${type} mt-4`;
+  t.textContent = msg;
+  t.style.display = 'block';
+}
+
+startCamera();

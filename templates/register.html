@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Register — Face Attendance</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<nav class="navbar">
+  <span class="navbar-brand">Face<span>Attend</span></span>
+  <a href="/" class="btn btn-ghost btn-sm">← Back to Login</a>
+</nav>
+
+<div class="page-wrap" style="max-width:600px">
+  <div class="card" style="margin-top:20px">
+    <h2 style="margin-bottom:4px;font-size:1.4rem">Employee Registration</h2>
+    <p class="text-muted" style="font-size:.875rem;margin-bottom:24px">Complete both steps to register your account.</p>
+
+    <!-- Steps -->
+    <div class="steps">
+      <div class="step active" id="s1">1 · Details</div>
+      <div class="step" id="s2">2 · Face Capture</div>
+    </div>
+
+    <!-- Step 1 -->
+    <div id="step1">
+
+      <!-- Role Selection -->
+      <div class="form-group">
+        <label>Role *</label>
+        <div style="display:flex;gap:12px;margin-top:6px">
+          <label style="flex:1;cursor:pointer">
+            <div id="role-employee" onclick="selectRole('employee')" style="display:flex;align-items:center;gap:10px;padding:14px 16px;background:var(--primary-glow);border:2px solid var(--primary);border-radius:12px;transition:all .2s">
+              <span style="font-size:1.4rem">👤</span>
+              <div>
+                <div style="font-weight:600;font-size:.9rem">Employee</div>
+                <div style="font-size:.75rem;color:var(--muted)">Standard access</div>
+              </div>
+            </div>
+          </label>
+          <label style="flex:1;cursor:pointer">
+            <div id="role-admin" onclick="selectRole('admin')" style="display:flex;align-items:center;gap:10px;padding:14px 16px;background:var(--surface2);border:2px solid var(--border);border-radius:12px;transition:all .2s">
+              <span style="font-size:1.4rem">🛡️</span>
+              <div>
+                <div style="font-weight:600;font-size:.9rem">Admin</div>
+                <div style="font-size:.75rem;color:var(--muted)">Full access</div>
+              </div>
+            </div>
+          </label>
+        </div>
+        <input type="hidden" id="emp_role" value="employee">
+      </div>
+
+      <div class="grid-2">
+        <div class="form-group">
+          <label>Employee ID *</label>
+          <input id="emp_id" class="form-control" placeholder="e.g. EMP-001" required>
+        </div>
+        <div class="form-group">
+          <label>Full Name *</label>
+          <input id="emp_name" class="form-control" placeholder="John Doe" required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input id="emp_email" type="email" class="form-control" placeholder="john@company.com">
+      </div>
+      <div class="form-group">
+        <label>Password *</label>
+        <input id="emp_pass" type="password" class="form-control" placeholder="Min 6 characters">
+      </div>
+      <button onclick="goStep2()" class="btn btn-primary btn-block mt-4">Next: Capture Face →</button>
+    </div>
+
+    <!-- Step 2 -->
+    <div id="step2" class="hidden">
+      <div class="camera-wrap" style="margin-bottom:24px">
+        <div class="camera-ring">
+          <video id="video" autoplay muted playsinline></video>
+          <div class="scan-bar"></div>
+        </div>
+        <p class="camera-hint">"Centre your face and ensure good lighting"</p>
+      </div>
+
+      <div id="reg-toast" class="toast toast-info" style="display:none"></div>
+
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <button onclick="goStep1()" class="btn btn-ghost" style="flex:0 0 auto">← Back</button>
+        <button id="reg-btn" onclick="submitRegister()" class="btn btn-primary" style="flex:1">📷 Capture &amp; Register</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Late Reason Modal -->
+<div id="late-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <div style="font-size:2rem;margin-bottom:8px">⏰</div>
+    <h3>You're Running Late</h3>
+    <p>Office hours start at 9:30 AM. Please select a reason for being late.</p>
+    <div class="form-group">
+      <label>Reason for Late Arrival</label>
+      <select id="late-reason" class="form-control">
+        <option value="">— Select a reason —</option>
+        <option value="Traffic">🚗 Traffic</option>
+        <option value="Health Issue">🏥 Health Issue</option>
+        <option value="Personal Work">💼 Personal Work</option>
+        <option value="Transport Delay">🚌 Transport Delay</option>
+        <option value="Emergency">🚨 Emergency</option>
+        <option value="Other">📝 Other</option>
+      </select>
+    </div>
+    <button onclick="submitLate()" class="btn btn-primary btn-block" id="reg-late-btn">Submit &amp; Continue</button>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/register.js') }}"></script>
+</body>
+</html>
