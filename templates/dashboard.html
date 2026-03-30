@@ -43,7 +43,7 @@
   <div class="sidebar-profile">
     <div class="profile-photo-wrap">
       <img id="profile-img"
-           src="{{ url_for('static', filename='uploads/' + emp.employee_id + '.jpg') }}"
+           src="/face-image/{{ emp.employee_id }}"
            onerror="this.style.display='none';document.getElementById('profile-initials').style.display='flex'"
            alt="Profile">
       <div id="profile-initials" class="profile-initials" style="display:none">
@@ -268,7 +268,7 @@
               {% if pct < 4 and hrs > 0 %}{% set pct = 4 %}{% endif %}
               <div class="bar-col">
                 <div class="bar-tooltip">{{ hrs }}h</div>
-                {% if r.status == 'late' %}
+                {% if (r.status|lower) == 'late' %}
                   <div class="bar" style="height:{{ pct }}%;background:var(--warn)"></div>
                 {% else %}
                   <div class="bar" style="height:{{ pct }}%"></div>
@@ -365,7 +365,7 @@
         {% for r in history[:5] %}
         <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
           <div style="width:8px;height:8px;border-radius:50%;flex-shrink:0;
-            background:{% if r.status=='present' %}var(--success){% elif r.status=='late' %}var(--warn){% else %}var(--danger){% endif %}">
+            background:{% if (r.status|lower)=='present' %}var(--success){% elif (r.status|lower)=='late' %}var(--warn){% else %}var(--danger){% endif %}">
           </div>
           <div style="flex:1;min-width:0">
             <div style="font-size:.85rem;font-weight:500">{{ fmt_date(r.date) }}</div>
@@ -375,7 +375,7 @@
               {% if r.working_hours %} · {{ r.working_hours }}h{% endif %}
             </div>
           </div>
-          <span class="pill pill-{{ r.status }}" style="font-size:.68rem">{{ r.status|title }}</span>
+          <span class="pill pill-{{ r.status|lower }}" style="font-size:.68rem">{{ r.status|title }}</span>
         </div>
         {% else %}
         <div class="empty-state">No activity records yet</div>
@@ -428,7 +428,7 @@
             <td class="mono text-green">{{ fmt_time(r.check_in) }}</td>
             <td class="mono text-muted">{{ fmt_time(r.check_out) }}</td>
             <td><strong>{{ r.working_hours or '—' }}{% if r.working_hours %}h{% endif %}</strong></td>
-            <td><span class="pill pill-{{ r.status }}">{{ r.status|title }}</span></td>
+            <td><span class="pill pill-{{ r.status|lower }}">{{ r.status|title }}</span></td>
           </tr>
           {% else %}
           <tr><td colspan="5" class="empty-row">No records yet. Check in to start tracking.</td></tr>
@@ -461,7 +461,7 @@
             <td class="mono text-green">{{ fmt_time(r.check_in) }}</td>
             <td class="mono text-muted">{{ fmt_time(r.check_out) }}</td>
             <td><strong>{{ r.working_hours or '—' }}{% if r.working_hours %}h{% endif %}</strong></td>
-            <td><span class="pill pill-{{ r.status }}">{{ r.status|title }}</span></td>
+            <td><span class="pill pill-{{ r.status|lower }}">{{ r.status|title }}</span></td>
             <td class="text-muted" style="font-size:.8rem">{{ r.late_reason or '—' }}</td>
           </tr>
           {% else %}
@@ -512,7 +512,7 @@
       <!-- Photo card -->
       <div class="dash-card" style="text-align:center">
         <div class="profile-photo-lg">
-          <img src="{{ url_for('static', filename='uploads/' + emp.employee_id + '.jpg') }}"
+          <img src="/face-image/{{ emp.employee_id }}"
                onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"
                alt="Profile">
           <div class="profile-initials-lg" style="display:none">{{ emp.name[0]|upper }}</div>

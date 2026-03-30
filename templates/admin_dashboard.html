@@ -115,7 +115,7 @@
               <td><strong>{{ r.working_hours or '—' }}{% if r.working_hours %}h{% endif %}</strong></td>
               <td>
                 {% if r.status %}
-                <span class="badge badge-{{ r.status }}">{{ r.status|title }}</span>
+                <span class="badge badge-{{ r.status|lower }}">{{ r.status|title }}</span>
                 {% else %}
                 <span class="badge badge-absent">Absent</span>
                 {% endif %}
@@ -161,7 +161,7 @@
               <td style="font-family:monospace;color:var(--muted)">{{ fmt_time(r.check_out) }}</td>
               <td><strong>{{ r.working_hours or '—' }}{% if r.working_hours %}h{% endif %}</strong></td>
               <td>
-                <span class="badge badge-{{ r.status }}">{{ r.status|title }}</span>
+                <span class="badge badge-{{ r.status|lower }}">{{ r.status|title }}</span>
               </td>
             </tr>
             {% else %}

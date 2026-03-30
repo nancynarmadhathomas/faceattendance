@@ -1,7 +1,7 @@
 import os, base64, subprocess, json, uuid
 from datetime import datetime, date
 from flask import (Flask, render_template, request, jsonify,
-                   session, redirect, url_for)
+                   session, redirect, url_for, Response)
 from flask_cors import CORS
 import numpy as np
 from deepface import DeepFace
@@ -70,8 +70,8 @@ CUTOFF = (9, 30)   # 09:30 AM
 def determine_status():
     now = datetime.now()
     if (now.hour, now.minute) <= CUTOFF:
-        return 'present'
-    return 'late'
+        return 'Present'
+    return 'Late'
 
 
 # ---------------------------------------------------------------------------
@@ -79,8 +79,6 @@ def determine_status():
 # ---------------------------------------------------------------------------
 @app.route('/')
 def index():
-    if 'user_id' in session:
-        return redirect(url_for('dashboard'))
     return render_template('login.html')
 
 
@@ -91,13 +89,13 @@ def register_page():
 
 @app.route('/dashboard')
 def dashboard():
-    if 'user_id' not in session:
+    if 'employee_id' not in session:
         return redirect(url_for('index'))
-    emp = db.get_employee(session['user_id'])
+    emp = db.get_employee(session['employee_id'])
     if not emp:
         session.clear()
         return redirect(url_for('index'))
-    uid          = session['user_id']
+    uid          = session['employee_id']
     today_rec    = db.get_today_record(uid)
     history      = db.get_attendance_history(uid)
     meetings     = db.get_meetings_for_employee(uid)
@@ -124,7 +122,7 @@ def dashboard():
 
 @app.route('/admin')
 def admin():
-    if session.get('role') != 'admin' and session.get('user_id') != 'admin':
+    if session.get('role') != 'admin' and session.get('employee_id') != 'admin':
         return redirect(url_for('index'))
     stats       = db.get_stats()
     employees   = db.get_all_employees()
@@ -148,6 +146,12 @@ def admin():
 # ---------------------------------------------------------------------------
 # Routes — API
 # ---------------------------------------------------------------------------
+@app.route('/face-image/<emp_id>', methods=['GET'])
+def get_face_image(emp_id):
+    emp = db.get_employee(emp_id)
+    if not emp or not emp.get('face_image'):
+        return '', 404
+    return Response(emp['face_image'], mimetype='image/jpeg')
 @app.route('/api/verify', methods=['POST'])
 def api_verify():
     data = request.json or {}
@@ -171,9 +175,12 @@ def api_verify():
             return jsonify({'success': False, 'message': 'Face not registered'})
 
         emp_id = match['employee_id']
+        
+        # LOG LOGIN EVENT TO SQL SERVER
+        db.log_login_event(emp_id)
 
         # FIX: Login ONLY creates session — no attendance marking here
-        session['user_id']   = emp_id
+        session['employee_id']   = emp_id
         session['user_name'] = match['name']
         session['role']      = match.get('role', 'employee')
 
@@ -189,19 +196,19 @@ def api_verify():
 
 @app.route('/api/late-reason', methods=['POST'])
 def api_late_reason():
-    if 'user_id' not in session:
+    if 'employee_id' not in session:
         return jsonify({'success': False})
     reason = (request.json or {}).get('reason', '')
-    db.update_late_reason(session['user_id'], reason)
+    db.update_late_reason(session['employee_id'], reason)
     return jsonify({'success': True})
 
 
 @app.route('/api/checkin', methods=['POST'])
 def api_checkin():
     """Dashboard Clock In — employee is already in session."""
-    if 'user_id' not in session:
+    if 'employee_id' not in session:
         return jsonify({'success': False, 'message': 'Not logged in'})
-    emp_id = session['user_id']
+    emp_id = session['employee_id']
     # Prevent duplicate check-ins
     existing = db.get_today_record(emp_id)
     if existing:
@@ -210,7 +217,7 @@ def api_checkin():
     db.log_checkin(emp_id, status=status)
     return jsonify({
         'success': True,
-        'late':    status == 'late',
+        'late':    status == 'Late',
         'status':  status
     })
 
@@ -236,13 +243,13 @@ def api_register():
     if ',' in img_b64:
         img_b64 = img_b64.split(',')[1]
 
-    img_path = os.path.join(UPLOAD_FOLDER, f'{emp_id}.jpg')
+    tmp_path = os.path.join(UPLOAD_FOLDER, f'tmp_{uuid.uuid4().hex}.jpg')
     try:
         raw = base64.b64decode(img_b64)
-        with open(img_path, 'wb') as f:
+        with open(tmp_path, 'wb') as f:
             f.write(raw)
 
-        emb_res = generate_embedding(img_path)
+        emb_res = generate_embedding(tmp_path)
         if not emb_res.get('success'):
             return jsonify({'success': False, 'message': emb_res.get('message', 'Face embedding failed.')})
 
@@ -250,7 +257,6 @@ def api_register():
             'employee_id':    emp_id,
             'name':           name,
             'email':          data.get('email', ''),
-            'department':     data.get('department', ''),
             'role':           data.get('role', 'employee'),
             'password':       data.get('password', ''),
             'face_embedding': json.dumps(emb_res['embedding']),
@@ -258,17 +264,17 @@ def api_register():
         })
 
     except Exception as e:
-        # Clean up saved image on failure
-        try:
-            if os.path.exists(img_path):
-                os.remove(img_path)
-        except Exception:
-            pass
         err = str(e).lower()
         if 'unique' in err or 'duplicate' in err:
             return jsonify({'success': False,
                             'message': f'Employee ID "{emp_id}" is already taken. Please use a different ID.'})
         return jsonify({'success': False, 'message': 'Registration failed. Please try again.'})
+    finally:
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except Exception:
+            pass
 
     # FIX: Registration only — no auto login, no attendance marking
     return jsonify({
@@ -281,17 +287,17 @@ def api_register():
 
 @app.route('/api/checkout', methods=['POST'])
 def api_checkout():
-    if 'user_id' not in session:
+    if 'employee_id' not in session:
         return jsonify({'success': False})
-    hours = db.log_checkout(session['user_id'])
+    hours = db.log_checkout(session['employee_id'])
     return jsonify({'success': True, 'working_hours': hours})
 
 
 @app.route('/api/meetings', methods=['GET'])
 def api_meetings():
-    if 'user_id' not in session:
+    if 'employee_id' not in session:
         return jsonify([])
-    meetings = db.get_meetings_for_employee(session['user_id'])
+    meetings = db.get_meetings_for_employee(session['employee_id'])
     return jsonify(meetings)
 
 
@@ -303,8 +309,7 @@ def api_create_meeting():
         'description': data.get('description', ''),
         'date':        data.get('date'),
         'time':        data.get('time'),
-        'employee_id': data.get('employee_id') or None,
-        'created_by':  'admin'
+        'created_by':  session.get('user_id', 'admin')
     })
     return jsonify({'success': True})
 
@@ -326,12 +331,12 @@ def admin_login():
     data = request.json or {}
     conn = db.get_conn()
     c = conn.cursor()
-    c.execute("SELECT id FROM admin_users WHERE username=? AND password=?",
+    c.execute("SELECT id FROM users WHERE employee_id=? AND password=? AND role='admin'",
               (data.get('username'), data.get('password')))
     row = c.fetchone()
     conn.close()
     if row:
-        session['user_id']   = 'admin'
+        session['employee_id']   = 'admin'
         session['user_name'] = 'Administrator'
         session['role']      = 'admin'
         return jsonify({'success': True, 'redirect': url_for('admin')})
@@ -340,8 +345,8 @@ def admin_login():
 
 @app.route('/logout')
 def logout():
-    if session.get('user_id') and session.get('user_id') != 'admin':
-        db.log_checkout(session['user_id'])
+    if session.get('employee_id') and session.get('employee_id') != 'admin':
+        db.log_checkout(session['employee_id'])
     session.clear()
     return redirect(url_for('index'))
 
@@ -349,7 +354,7 @@ def logout():
 # ── Leave Requests ──────────────────────────────────────────────────────────
 @app.route('/api/leave-request', methods=['POST'])
 def api_submit_leave():
-    if 'user_id' not in session:
+    if 'employee_id' not in session:
         return jsonify({'success': False, 'message': 'Not logged in'})
     data = request.json or {}
     leave_type = (data.get('leave_type') or '').strip()
@@ -359,7 +364,7 @@ def api_submit_leave():
     if not leave_type or not from_date or not to_date:
         return jsonify({'success': False, 'message': 'Leave type, from date and to date are required.'})
     db.create_leave_request({
-        'employee_id': session['user_id'],
+        'employee_id': session['employee_id'],
         'leave_type':  leave_type,
         'from_date':   from_date,
         'to_date':     to_date,
@@ -370,14 +375,14 @@ def api_submit_leave():
 
 @app.route('/api/leave-requests', methods=['GET'])
 def api_my_leave_requests():
-    if 'user_id' not in session:
+    if 'employee_id' not in session:
         return jsonify([])
-    return jsonify(db.get_leave_requests_by_employee(session['user_id']))
+    return jsonify(db.get_leave_requests_by_employee(session['employee_id']))
 
 
 @app.route('/api/admin/leave/<int:lid>/approve', methods=['POST'])
 def api_approve_leave(lid):
-    if session.get('role') != 'admin' and session.get('user_id') != 'admin':
+    if session.get('role') != 'admin' and session.get('employee_id') != 'admin':
         return jsonify({'success': False})
     db.update_leave_status(lid, 'Approved')
     return jsonify({'success': True})
@@ -385,7 +390,7 @@ def api_approve_leave(lid):
 
 @app.route('/api/admin/leave/<int:lid>/reject', methods=['POST'])
 def api_reject_leave(lid):
-    if session.get('role') != 'admin' and session.get('user_id') != 'admin':
+    if session.get('role') != 'admin' and session.get('employee_id') != 'admin':
         return jsonify({'success': False})
     db.update_leave_status(lid, 'Rejected')
     return jsonify({'success': True})
@@ -396,9 +401,9 @@ def api_reject_leave(lid):
 # ---------------------------------------------------------------------------
 @app.route('/api/dashboard-data', methods=['GET'])
 def api_dashboard_data():
-    if 'user_id' not in session:
+    if 'employee_id' not in session:
         return jsonify({'success': False, 'message': 'Not logged in'}), 401
-    uid = session['user_id']
+    uid = session['employee_id']
     emp = db.get_employee(uid)
     if not emp:
         return jsonify({'success': False, 'message': 'User not found'}), 404
@@ -414,7 +419,6 @@ def api_dashboard_data():
             'employee_id': emp['employee_id'],
             'name':        emp['name'],
             'email':       emp.get('email'),
-            'department':  emp.get('department'),
             'role':        emp.get('role'),
             'created_at':  emp.get('created_at').isoformat() if emp.get('created_at') else None,
             'face_image':  face_image
@@ -433,7 +437,7 @@ def api_dashboard_data():
 
 @app.route('/api/admin-dashboard-data', methods=['GET'])
 def api_admin_dashboard_data():
-    if session.get('role') != 'admin' and session.get('user_id') != 'admin':
+    if session.get('role') != 'admin' and session.get('employee_id') != 'admin':
         return jsonify({'success': False, 'message': 'Unauthorized'}), 403
     
     data = {
