@@ -95,24 +95,6 @@ async function submitLateReason() {
   window.location.href = window._redirect || '/dashboard';
 }
 
-// ── Admin login ──────────────────────────────────────────────────
-function showAdminLogin() { document.getElementById('admin-modal').classList.remove('hidden'); }
-
-async function submitAdminLogin() {
-  const u = document.getElementById('admin-user').value;
-  const p = document.getElementById('admin-pass').value;
-  const res = await fetch('/admin/login', {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ username:u, password:p })
-  });
-  const result = await res.json();
-  if (result.success) {
-    window.location.href = result.redirect;
-  } else {
-    document.getElementById('admin-err').style.display = 'block';
-    document.getElementById('admin-err').textContent = result.message;
-  }
-}
 
 // ── Toast helper ─────────────────────────────────────────────────
 function showToast(msg, type='info') {

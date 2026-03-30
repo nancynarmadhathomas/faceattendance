@@ -1,11 +1,7 @@
-use std::path::Path;
 use tract_onnx::prelude::*;
 use serde::{Serialize, Deserialize};
 use clap::{Parser, Subcommand};
-use nalgebra::{DMatrix, DVector};
-use image::{imageops::FilterType, GenericImageView};
-use std::fs::File;
-use std::io::Read;
+use image::imageops::FilterType;
 use std::sync::OnceLock;
 
 type RunnableModel = tract_onnx::prelude::SimplePlan<
@@ -27,10 +23,10 @@ fn init_model() -> std::result::Result<(), String> {
                     let _ = MODEL.set(runnable);
                     Ok(())
                 },
-                Err(_) => Err("Face model not loaded".to_string()),
+                Err(e) => Err(format!("Optimization/Run failed: {}", e)),
             }
         },
-        Err(_) => Err("Face model not loaded".to_string()),
+        Err(e) => Err(format!("Model path error: {}", e)),
     }
 }
 
@@ -60,7 +56,7 @@ enum Commands {
 }
 
 #[derive(Serialize, Deserialize)]
-struct Result {
+pub struct Result {
     success: bool,
     embedding: Option<Vec<f32>>,
     distance: Option<f32>,
@@ -131,7 +127,7 @@ fn generate_embedding(image_path: &str) -> Result {
         (pixel[c] as f32 - 127.5) / 128.0
     }).into();
 
-    let result = model.run(tvec!(tensor)).unwrap();
+    let result = model.run(tvec!(tensor.into())).unwrap();
     let embedding: Vec<f32> = result[0]
         .to_array_view::<f32>().unwrap()
         .iter()

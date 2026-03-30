@@ -1,15 +1,78 @@
-// ── Tabs ─────────────────────────────────────
-function showTab(name) {
-  document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
-  document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
-  document.getElementById('tab-' + name).classList.remove('hidden');
+// ── Dashboard Search ──────────────────────────
+function searchDashboard(query) {
+  const q = query.toLowerCase().trim();
   
-  // Find the button that was clicked and activate it
-  const btn = Array.from(document.querySelectorAll('.nav-btn')).find(b => b.innerText.toLowerCase().includes(name.toLowerCase()));
-  if (btn) btn.classList.add('active');
+  // 1. Today's Attendance Table
+  document.querySelectorAll('#today-table tbody tr').forEach(row => {
+    const text = row.innerText.toLowerCase();
+    row.style.display = text.includes(q) ? '' : 'none';
+  });
+
+  // 2. Recent Activity Feed
+  document.querySelectorAll('#activity-feed .feed-item').forEach(item => {
+    const text = item.innerText.toLowerCase();
+    item.style.display = text.includes(q) ? 'flex' : 'none';
+  });
+
+  // 3. Late Employees Table
+  document.querySelectorAll('#late-table tbody tr').forEach(row => {
+    const text = row.innerText.toLowerCase();
+    row.style.display = text.includes(q) ? '' : 'none';
+  });
+
+  // 4. Employees Table (if active)
+  document.querySelectorAll('#emp-table tbody tr').forEach(row => {
+    const text = row.innerText.toLowerCase();
+    row.style.display = text.includes(q) ? '' : 'none';
+  });
 }
 
-// ── Table search ─────────────────────────────
+// ── Dropdowns ──────────────────────────────────
+function toggleDropdown(id) {
+  const menu = document.getElementById(id);
+  // Close others
+  document.querySelectorAll('.dropdown-menu').forEach(m => {
+    if (m.id !== id) m.classList.remove('show');
+  });
+  menu.classList.toggle('show');
+}
+
+// Close dropdowns on outside click
+window.addEventListener('click', (e) => {
+  if (!e.target.closest('.dropdown-container')) {
+    document.querySelectorAll('.dropdown-menu').forEach(m => m.classList.remove('show'));
+  }
+});
+
+// ── Toasts ─────────────────────────────────────
+function showToast(msg, type = 'success') {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  
+  const icon = type === 'success' ? 'check-circle' : 'alert-circle';
+  // Standardized messages per STRICT PATCH rules
+  const finalMsg = type === 'success' ? 'Action completed successfully' : 'Action failed';
+  
+  toast.innerHTML = `
+    <i data-lucide="${icon}" style="width:20px;height:20px"></i>
+    <div class="toast-msg">${finalMsg}</div>
+  `;
+  
+  container.appendChild(toast);
+  lucide.createIcons();
+
+  // Auto-hide
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateX(20px)';
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
+
+// ── Table filtering (Employees Page Legacy) ─────
 function filterTable(bodyId, query) {
   const q = query.toLowerCase();
   document.querySelectorAll(`#${bodyId} tr`).forEach(row => {
@@ -17,72 +80,105 @@ function filterTable(bodyId, query) {
   });
 }
 
-// ── Meeting Modal ─────────────────────────────
+// ── Meeting Functions ──────────────────────────
 function showMeetingModal() {
-  document.getElementById('m-date').value = new Date().toISOString().slice(0,10);
   document.getElementById('meeting-modal').classList.remove('hidden');
 }
 
 async function saveMeeting() {
-  const title = document.getElementById('m-title').value.trim();
+  const title = document.getElementById('m-title').value;
   const date  = document.getElementById('m-date').value;
   const time  = document.getElementById('m-time').value;
-  const errEl = document.getElementById('meeting-err');
+  const emp   = document.getElementById('m-emp').value;
+  const desc  = document.getElementById('m-desc').value;
 
   if (!title || !date || !time) {
-    errEl.textContent = 'Title, date and time are required.';
-    errEl.style.display = 'block';
+    showToast('Failed', 'error');
     return;
   }
-  errEl.style.display = 'none';
 
-  const res = await fetch('/api/admin/meeting', {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({
-      title, date, time,
-      description: document.getElementById('m-desc').value.trim(),
-      employee_id: document.getElementById('m-emp').value || null
-    })
-  });
-  const r = await res.json();
-  if (r.success) {
-    document.getElementById('meeting-modal').classList.add('hidden');
-    location.reload();
+  try {
+    const res = await fetch('/api/admin/meeting', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, date, time, employee_id: emp, description: desc })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast('Success');
+      setTimeout(() => location.reload(), 1000);
+    } else {
+      showToast('Failed', 'error');
+    }
+  } catch (err) {
+    showToast('Failed', 'error');
   }
 }
 
-// ── Delete Meeting ────────────────────────────
+// ── Actions ─────────────────────────────────────
+async function leaveAction(id, action) {
+  try {
+    const res  = await fetch(`/api/admin/leave/${id}/${action}`, { method:'POST' });
+    const data = await res.json();
+    if (data.success) {
+      showToast('Success');
+      setTimeout(() => location.reload(), 1000);
+    } else {
+      showToast('Failed', 'error');
+    }
+  } catch (err) {
+    showToast('Failed', 'error');
+  }
+}
+
+async function deleteEmployee(id) {
+  if (!confirm(`Delete employee ${id}?`)) return;
+  try {
+    const res = await fetch(`/api/admin/employee/${id}`, { method:'DELETE' });
+    const data = await res.json();
+    if (data.success) {
+      showToast('Success');
+      document.getElementById(`erow-${id}`)?.remove();
+    } else {
+      showToast('Failed', 'error');
+    }
+  } catch (err) {
+    showToast('Failed', 'error');
+  }
+}
+
 async function deleteMeeting(id) {
   if (!confirm('Delete this meeting?')) return;
-  await fetch(`/api/admin/meeting/${id}`, { method:'DELETE' });
-  const card = document.getElementById('mcard-' + id);
-  if (card) card.remove();
-}
-
-// ── Delete Employee ───────────────────────────
-async function deleteEmployee(id) {
-  if (!confirm(`Delete employee ${id} and all their records?`)) return;
-  await fetch(`/api/admin/employee/${id}`, { method:'DELETE' });
-  const row = document.getElementById('erow-' + id);
-  if (row) row.remove();
-}
-
-// ── Leave Actions ─────────────────────────────
-async function leaveAction(id, action) {
-  const label = action === 'approve' ? 'Approve' : 'Reject';
-  if (!confirm(`${label} this leave request?`)) return;
-  const res  = await fetch(`/api/admin/leave/${id}/${action}`, { method:'POST' });
-  const data = await res.json();
-  if (data.success) {
-    const row = document.getElementById('lrow-' + id);
-    if (row) {
-      row.cells[6].innerHTML = action === 'approve'
-        ? '<span class="badge badge-present">Approved</span>'
-        : '<span class="badge badge-absent">Rejected</span>';
-      row.cells[7].innerHTML = '<span class="text-muted" style="font-size:.8rem">—</span>';
+  try {
+    const res = await fetch(`/api/admin/meeting/${id}`, { method:'DELETE' });
+    const data = await res.json();
+    if (data.success) {
+      showToast('Success');
+      document.getElementById(`mcard-${id}`)?.remove();
+    } else {
+      showToast('Failed', 'error');
     }
+  } catch (err) {
+    showToast('Failed', 'error');
   }
 }
 
-// Init Lucide icons
+// ── Theme Toggle ──────────────────────────────
+const themeToggle = document.getElementById('theme-toggle');
+if (themeToggle) {
+  themeToggle.addEventListener('click', () => {
+    const isLight = document.body.classList.toggle('light-theme');
+    localStorage.setItem('theme', isLight ? 'light' : 'dark');
+    const icon = themeToggle.querySelector('i');
+    icon.setAttribute('data-lucide', isLight ? 'sun' : 'moon');
+    lucide.createIcons();
+  });
+  
+  if (localStorage.getItem('theme') === 'light') {
+    document.body.classList.add('light-theme');
+    themeToggle.querySelector('i').setAttribute('data-lucide', 'sun');
+  }
+}
+
+// Init icons
 lucide.createIcons();

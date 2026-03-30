@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
 </head>
 <body class="dash-body">
 
@@ -77,6 +78,9 @@
       <span class="nav-icon"><i data-lucide="umbrella" style="width:16px;height:16px"></i></span> Leave Request
       {% set pending_leaves = leave_reqs | selectattr('status','eq','Pending') | list %}
       {% if pending_leaves %}<span class="nav-badge" style="background:#f59e0b">{{ pending_leaves|length }}</span>{% endif %}
+    </a>
+    <a class="nav-item" onclick="showSection('analytics',this)">
+      <span class="nav-icon"><i data-lucide="bar-chart-2" style="width:16px;height:16px"></i></span> Analytics
     </a>
     <a class="nav-item" onclick="showSection('profile-sec',this)">
       <span class="nav-icon"><i data-lucide="user" style="width:16px;height:16px"></i></span> My Profile
@@ -623,6 +627,206 @@
       </table>
     </div>
   </section>
+
+  <!-- ════════ ANALYTICS ════════ -->
+  <section id="analytics" class="dash-section hidden">
+    <!-- SECTION 1 — SUMMARY CARDS -->
+    <div class="stats-row" style="margin-bottom:20px">
+      <div class="stat-tile" style="--c:#8b5cf6">
+        <div class="stat-icon"><i data-lucide="activity" style="width:20px;height:20px;color:#8b5cf6"></i></div>
+        <div class="stat-body">
+          <div class="stat-label">Attendance %</div>
+          <div class="stat-val">{{ analytics.attendance_pct }}%</div>
+        </div>
+      </div>
+      <div class="stat-tile" style="--c:#f59e0b">
+        <div class="stat-icon"><i data-lucide="alert-triangle" style="width:20px;height:20px;color:#f59e0b"></i></div>
+        <div class="stat-body">
+          <div class="stat-label">Late Count (month)</div>
+          <div class="stat-val">{{ analytics.late_count_month }}</div>
+        </div>
+      </div>
+      <div class="stat-tile" style="--c:#6366f1">
+        <div class="stat-icon"><i data-lucide="umbrella" style="width:20px;height:20px;color:#6366f1"></i></div>
+        <div class="stat-body">
+          <div class="stat-label">Leaves Taken</div>
+          <div class="stat-val">{{ analytics.leaves_taken_month }}</div>
+        </div>
+      </div>
+      <div class="stat-tile" style="--c:#10b981">
+        <div class="stat-icon"><i data-lucide="clock" style="width:20px;height:20px;color:#10b981"></i></div>
+        <div class="stat-body">
+          <div class="stat-label">Working Hours (month)</div>
+          <div class="stat-val">{{ analytics.working_hours_month }}h</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 2 & 3 — MONTHLY ATTENDANCE & WORKING HOURS -->
+    <div class="grid-2" style="gap:20px;margin-bottom:20px">
+      <!-- SECTION 2: ATTENDANCE PIE -->
+      <div class="dash-card">
+        <div class="card-header">
+          <span class="card-title"><i data-lucide="pie-chart" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Monthly Attendance</span>
+        </div>
+        <div id="chart-attendance-pie" style="min-height: 250px;"></div>
+      </div>
+
+      <!-- SECTION 3: WEEKLY HOURS BAR -->
+      <div class="dash-card">
+        <div class="card-header">
+          <span class="card-title"><i data-lucide="bar-chart-2" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Weekly Working Hours</span>
+        </div>
+        <div id="chart-weekly-bar" style="min-height: 250px;"></div>
+      </div>
+    </div>
+
+    <!-- SECTION 6: MONTHLY TREND LINE -->
+    <div class="dash-card" style="margin-bottom:20px">
+      <div class="card-header">
+        <span class="card-title"><i data-lucide="trending-up" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Monthly Attendance Trend</span>
+      </div>
+      <div id="chart-monthly-line" style="min-height: 300px;"></div>
+    </div>
+
+    <!-- SECTION 4 & 5 — LATE & LEAVE CHARTS -->
+    <div class="grid-2" style="gap:20px;margin-bottom:20px">
+      <!-- SECTION 4: LATE BAR -->
+      <div class="dash-card">
+        <div class="card-header">
+          <span class="card-title"><i data-lucide="alert-octagon" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Late Analytics (Per Week)</span>
+        </div>
+        <div id="chart-late-bar" style="min-height: 250px;"></div>
+      </div>
+
+      <!-- SECTION 5: LEAVE DONUT -->
+      <div class="dash-card">
+        <div class="card-header">
+          <span class="card-title"><i data-lucide="umbrella" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Leave Type Breakdown</span>
+        </div>
+        <div id="chart-leave-donut" style="min-height: 250px;"></div>
+      </div>
+    </div>
+
+    <!-- SECTION 7: CHECK-IN PATTERN -->
+    <div class="dash-card" style="margin-bottom:20px">
+      <div class="card-header">
+        <span class="card-title"><i data-lucide="log-in" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Check-In Time Pattern</span>
+      </div>
+      <div id="chart-checkin-line" style="min-height: 300px;"></div>
+    </div>
+
+  </section>
+
+  <!-- Chart Init Script -->
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const dark = document.body.classList.contains('dark-mode') || true;
+      const data = {{ analytics | tojson }};
+      const colors = ['#10b981', '#f59e0b', '#6366f1', '#ef4444', '#8b5cf6', '#ec4899'];
+
+      const commonOptions = {
+        chart: { foreColor: '#94a3b8', toolbar: { show: false }, background: 'transparent' },
+        theme: { mode: 'dark' },
+        grid: { borderColor: '#334155', strokeDashArray: 4 }
+      };
+
+      // 1. Attendance Pie
+      new ApexCharts(document.querySelector("#chart-attendance-pie"), {
+        ...commonOptions,
+        series: data.chart_attendance_pie.data,
+        labels: data.chart_attendance_pie.labels,
+        chart: { ...commonOptions.chart, type: 'pie', height: 280 },
+        colors: ['#10b981', '#f59e0b', '#6366f1', '#ef4444'],
+        stroke: { show: false },
+        legend: { position: 'bottom' }
+      }).render();
+
+      // 2. Weekly Bar
+      new ApexCharts(document.querySelector("#chart-weekly-bar"), {
+        ...commonOptions,
+        series: [{ name: 'Hours', data: data.chart_weekly_hours.data }],
+        chart: { ...commonOptions.chart, type: 'bar', height: 280 },
+        colors: ['#6366f1'],
+        plotOptions: { bar: { borderRadius: 6, distributed: true } },
+        xaxis: { categories: data.chart_weekly_hours.labels }
+      }).render();
+
+      // 3. Monthly Line
+      new ApexCharts(document.querySelector("#chart-monthly-line"), {
+        ...commonOptions,
+        series: [{ name: 'Working Hours', data: data.chart_monthly_trend.data }],
+        chart: { ...commonOptions.chart, type: 'area', height: 320 },
+        colors: ['#10b981'],
+        stroke: { curve: 'smooth', width: 3 },
+        fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.1 } },
+        xaxis: { 
+            categories: data.chart_monthly_trend.labels.map(d => d.split('-')[2]),
+            title: { text: 'Day of Month' }
+        },
+        yaxis: { title: { text: 'Hours' } }
+      }).render();
+
+      // 4. Late Bar
+      new ApexCharts(document.querySelector("#chart-late-bar"), {
+        ...commonOptions,
+        series: [{ name: 'Late Count', data: data.chart_weekly_late.data }],
+        chart: { ...commonOptions.chart, type: 'bar', height: 280 },
+        colors: ['#f59e0b'],
+        plotOptions: { bar: { borderRadius: 8, columnWidth: '40%' } },
+        xaxis: { categories: data.chart_weekly_late.labels }
+      }).render();
+
+      // 5. Leave Donut
+      new ApexCharts(document.querySelector("#chart-leave-donut"), {
+        ...commonOptions,
+        series: data.chart_leave_donut.data,
+        labels: data.chart_leave_donut.labels,
+        chart: { ...commonOptions.chart, type: 'donut', height: 280 },
+        colors: ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#10b981'],
+        stroke: { show: false },
+        legend: { position: 'bottom' }
+      }).render();
+
+      // 6. Check-in Line
+      new ApexCharts(document.querySelector("#chart-checkin-line"), {
+        ...commonOptions,
+        series: [{ 
+            name: 'Check-in Time', 
+            data: data.chart_checkin_trend.data 
+        }],
+        chart: { ...commonOptions.chart, type: 'line', height: 320 },
+        colors: ['#8b5cf6'],
+        stroke: { curve: 'stepline', width: 3 },
+        markers: { size: 4 },
+        xaxis: { 
+            categories: data.chart_checkin_trend.labels.map(d => d.split('-')[2]),
+            title: { text: 'Day of Month' }
+        },
+        yaxis: {
+          labels: {
+            formatter: function(val) {
+              if(!val) return '--:--';
+              const h = Math.floor(val/60);
+              const m = val % 60;
+              return `${h}:${m < 10 ? '0' + m : m}`;
+            }
+          },
+          title: { text: 'Time' }
+        },
+        tooltip: {
+            y: {
+                formatter: function(val) {
+                    if(!val) return 'Not Clocked In';
+                    const h = Math.floor(val/60);
+                    const m = val % 60;
+                    return `${h}:${m < 10 ? '0' + m : m}`;
+                }
+            }
+        }
+      }).render();
+    });
+  </script>
 
 </main>
 

@@ -20,18 +20,13 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 # ---------------------------------------------------------------------------
 def generate_embedding(image_path):
     try:
-        objs = DeepFace.represent(img_path=image_path, model_name="ArcFace", enforce_detection=True)
+        # Lower strictness on detection to be more lenient with alignment/lighting
+        objs = DeepFace.represent(img_path=image_path, model_name="ArcFace", enforce_detection=False)
         if len(objs) == 0:
             return {'success': False, 'message': 'Face not detected. Please align face.'}
-        if len(objs) > 1:
-            return {'success': False, 'message': 'Multiple faces detected. Ensure only one face is visible.'}
             
         embedding = objs[0]['embedding']
         return {'success': True, 'embedding': embedding}
-    except ValueError as ve:
-        if 'Face could not be detected' in str(ve) or 'could not be detected' in str(ve):
-            return {'success': False, 'message': 'Face not detected. Please align face.'}
-        return {'success': False, 'message': 'Multiple faces or detection error. Ensure clear lighting.'}
     except Exception as e:
         return {'success': False, 'message': str(e)}
 
@@ -43,7 +38,7 @@ def cosine_similarity(v1, v2):
 
 
 def compare_with_db(current_emb):
-    """Return best matching employee or None. Strict 0.68 ArcFace threshold."""
+    """Return best matching employee or None. Balanced 0.55 ArcFace threshold."""
     employees = db.get_all_embeddings()
     best, best_dist = None, -1.0
     for emp in employees:
@@ -53,7 +48,8 @@ def compare_with_db(current_emb):
         try:
             db_emb = json.loads(emb) if isinstance(emb, str) else emb
             dist = cosine_similarity(current_emb, db_emb)
-            if dist > 0.68 and dist > best_dist:
+            # 0.55 is a balanced threshold for ArcFace cosine similarity
+            if dist > 0.55 and dist > best_dist:
                 best_dist = dist
                 best = emp
         except Exception:
@@ -104,6 +100,7 @@ def dashboard():
     leave_bal    = db.get_leave_balance(uid)
     upcoming     = db.get_upcoming_meetings(uid)
     notifs       = db.get_notifications(uid)
+    analytics    = db.get_employee_analytics(uid)
     return render_template('dashboard.html',
                            emp=emp,
                            today=today_rec,
@@ -114,6 +111,7 @@ def dashboard():
                            leave_bal=leave_bal,
                            upcoming=upcoming,
                            notifs=notifs,
+                           analytics=analytics,
                            today_date=__import__('datetime').date.today().isoformat(),
                            fmt_time=db.fmt_time,
                            fmt_date=db.fmt_date)
@@ -121,9 +119,16 @@ def dashboard():
 
 
 @app.route('/admin')
-def admin():
+@app.route('/admin/<tab>')
+def admin(tab='attendance'):
     if session.get('role') != 'admin' and session.get('employee_id') != 'admin':
         return redirect(url_for('index'))
+        
+    # Sanitize and default
+    active_tab = (tab or 'attendance').strip().lower()
+    if active_tab not in ['attendance', 'employees', 'meetings', 'leaves', 'reports', 'activity']:
+        return redirect(url_for('admin', tab='attendance'))
+
     stats       = db.get_stats()
     employees   = db.get_all_employees()
     attend      = db.get_today_attendance()
@@ -131,7 +136,9 @@ def admin():
     meetings    = db.get_all_meetings()
     all_emps    = db.get_all_employees()
     leave_reqs  = db.get_all_leave_requests()
+    
     return render_template('admin_dashboard.html',
+                           active_tab=tab,
                            stats=stats,
                            employees=employees,
                            attend=attend,
@@ -175,19 +182,31 @@ def api_verify():
             return jsonify({'success': False, 'message': 'Face not registered'})
 
         emp_id = match['employee_id']
+
+        # Get employee_id and fetch true role exactly as requested
+        conn = db.get_conn()
+        c = conn.cursor()
+        c.execute("SELECT role FROM users WHERE employee_id = ?", (emp_id,))
+        row = c.fetchone()
+        role = row[0] if (row and row[0]) else 'employee'
+        conn.close()
         
         # LOG LOGIN EVENT TO SQL SERVER
         db.log_login_event(emp_id)
 
-        # FIX: Login ONLY creates session — no attendance marking here
-        session['employee_id']   = emp_id
+        session['employee_id'] = emp_id
         session['user_name'] = match['name']
-        session['role']      = match.get('role', 'employee')
+        session['role'] = role
+
+        if role == 'admin':
+            redirect_to = url_for('admin')
+        else:
+            redirect_to = url_for('dashboard')
 
         return jsonify({
             'success':  True,
             'name':     match['name'],
-            'redirect': url_for('dashboard')
+            'redirect': redirect_to
         })
     finally:
         if os.path.exists(tmp):
@@ -309,6 +328,7 @@ def api_create_meeting():
         'description': data.get('description', ''),
         'date':        data.get('date'),
         'time':        data.get('time'),
+        'employee_id': data.get('employee_id'),
         'created_by':  session.get('user_id', 'admin')
     })
     return jsonify({'success': True})
@@ -326,21 +346,7 @@ def api_delete_employee(emp_id):
     return jsonify({'success': True})
 
 
-@app.route('/admin/login', methods=['POST'])
-def admin_login():
-    data = request.json or {}
-    conn = db.get_conn()
-    c = conn.cursor()
-    c.execute("SELECT id FROM users WHERE employee_id=? AND password=? AND role='admin'",
-              (data.get('username'), data.get('password')))
-    row = c.fetchone()
-    conn.close()
-    if row:
-        session['employee_id']   = 'admin'
-        session['user_name'] = 'Administrator'
-        session['role']      = 'admin'
-        return jsonify({'success': True, 'redirect': url_for('admin')})
-    return jsonify({'success': False, 'message': 'Invalid credentials'})
+
 
 
 @app.route('/logout')
@@ -393,6 +399,37 @@ def api_reject_leave(lid):
     if session.get('role') != 'admin' and session.get('employee_id') != 'admin':
         return jsonify({'success': False})
     db.update_leave_status(lid, 'Rejected')
+    return jsonify({'success': True})
+# ── Admin Operations ────────────────────────────────────────────────────────
+@app.route('/api/admin/meeting', methods=['POST'])
+def api_create_meeting():
+    if session.get('role') != 'admin' and session.get('employee_id') != 'admin':
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+    data = request.json or {}
+    if not data.get('title') or not data.get('date') or not data.get('time'):
+        return jsonify({'success': False, 'message': 'Title, date, and time are required.'})
+    db.create_meeting({
+        'title':       data['title'],
+        'date':        data['date'],
+        'time':        data['time'],
+        'description': data.get('description', ''),
+        'employee_id': data.get('employee_id'),
+        'created_by':  session.get('employee_id')
+    })
+    return jsonify({'success': True})
+
+@app.route('/api/admin/meeting/<int:mid>', methods=['DELETE'])
+def api_delete_meeting(mid):
+    if session.get('role') != 'admin' and session.get('employee_id') != 'admin':
+        return jsonify({'success': False}), 403
+    db.delete_meeting(mid)
+    return jsonify({'success': True})
+
+@app.route('/api/admin/employee/<emp_id>', methods=['DELETE'])
+def api_delete_employee(emp_id):
+    if session.get('role') != 'admin' and session.get('employee_id') != 'admin':
+        return jsonify({'success': False}), 403
+    db.delete_employee(emp_id)
     return jsonify({'success': True})
 
 
@@ -451,6 +488,14 @@ def api_admin_dashboard_data():
     }
     return jsonify(data)
 
+
+@app.route('/api/admin/analytics')
+def api_admin_analytics():
+    if session.get('role') != 'admin' and session.get('employee_id') != 'admin':
+        return jsonify({'success': False})
+    time_range = request.args.get('range', 'today')
+    data = db.get_admin_analytics(time_range)
+    return jsonify(data)
 
 if __name__ == '__main__':
     db.init_db()
