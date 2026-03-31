@@ -1,5 +1,6 @@
 import os
 from datetime import datetime, date
+import datetime as dt
 import pyodbc
 
 # --- Connection ---
@@ -459,82 +460,190 @@ def get_notifications(employee_id):
     return notes
 
 # --- Admin Analytics ---
+# --- Admin Analytics ---
 def get_admin_analytics(time_range):
     import datetime as dt
     conn = get_conn()
     c = conn.cursor()
     today = dt.date.today()
     
-    # 1. Date Range Selection
-    if time_range == 'week':
-        days_to_fetch = 7
-    elif time_range == 'month':
-        days_to_fetch = today.day
-    else: # today
-        days_to_fetch = 1
+    if time_range == 'week': days_to_fetch = 7
+    elif time_range == 'month': days_to_fetch = today.day
+    else: days_to_fetch = 30
         
     start_date = (today - dt.timedelta(days=days_to_fetch - 1))
     
-    # 2. Get Total Employee Count for Absence Calculation
     c.execute("SELECT COUNT(*) FROM users WHERE role != 'admin'")
     total_emps = c.fetchone()[0] or 0
 
-    # 3. Time-Series Data Aggregation
-    # We'll fetch daily counts for the specified range
-    c.execute(f"""
-        SELECT date, 
-               SUM(CASE WHEN status='Present' THEN 1 ELSE 0 END) as present,
-               SUM(CASE WHEN status='Late' THEN 1 ELSE 0 END) as late
-        FROM attendance
-        WHERE date >= ?
-        GROUP BY date
-        ORDER BY date ASC
-    """, (start_date.isoformat(),))
-    rows = c.fetchall()
-    
-    # Convert rows to a dictionary for easy mapping
-    db_data = {str(r[0]): {'present': r[1], 'late': r[2]} for r in rows}
-    
-    # 4. Fill in missing dates and calculate absences
-    labels, present, late, absent = [], [], [], []
+    # 1. Attendance Data
+    c.execute("""SELECT date, 
+                       SUM(CASE WHEN status='Present' THEN 1 ELSE 0 END) as present,
+                       SUM(CASE WHEN status='Late' THEN 1 ELSE 0 END) as late
+                FROM attendance WHERE date >= ? GROUP BY date ORDER BY date ASC""", (start_date.isoformat(),))
+    att_data = {str(r[0]): {'present': r[1], 'late': r[2]} for r in c.fetchall()}
+
+    # 2. Leave Data (Historical)
+    c.execute("""SELECT from_date, to_date FROM leave_requests WHERE status='Approved' AND to_date >= ?""", (start_date.isoformat(),))
+    leave_reqs = c.fetchall()
+
+    labels, present, late, absent, on_leave = [], [], [], [], []
     for i in range(days_to_fetch):
-        d = (start_date + dt.timedelta(days=i)).isoformat()
-        day_stats = db_data.get(d, {'present': 0, 'late': 0})
+        curr_d = (start_date + dt.timedelta(days=i))
+        d_str = curr_d.isoformat()
         
-        labels.append(d[-5:]) # MM-DD
-        present.append(day_stats['present'])
-        late.append(day_stats['late'])
-        # Absent = Total - (Present + Late)
-        abs_count = max(0, total_emps - (day_stats['present'] + day_stats['late']))
+        # Count who was on leave this specific day
+        leave_count = sum(1 for l in leave_reqs if l[0] <= curr_d and l[1] >= curr_d)
+        
+        day_att = att_data.get(d_str, {'present': 0, 'late': 0})
+        
+        labels.append(d_str[-5:])
+        present.append(day_att['present'])
+        late.append(day_att['late'])
+        on_leave.append(leave_count)
+        # Absent = Total - (Present + Late + On Leave)
+        abs_count = max(0, total_emps - (day_att['present'] + day_att['late'] + leave_count))
         absent.append(abs_count)
         
+    conn.close()
     return {
         'labels': labels,
         'present': present,
         'late': late,
-        'absent': absent
+        'absent': absent,
+        'on_leave': on_leave
     }
 
-def get_employee_performance():
+def get_admin_detailed_stats():
+    import datetime as dt
     conn = get_conn()
     c = conn.cursor()
-    c.execute("""
-        SELECT u.name, COUNT(a.id) as present_count
-        FROM users u
-        LEFT JOIN attendance a ON u.employee_id = a.employee_id AND a.status IN ('Present', 'Late')
-        WHERE u.role != 'admin'
-        GROUP BY u.name
-        ORDER BY present_count DESC
-    """)
-    rows = c.fetchall()
-    conn.close()
+    today = dt.date.today()
+    weekday = today.weekday()
+    week_start = today - dt.timedelta(days=weekday)
     
-    return {
-        'names': [r[0] for r in rows],
-        'counts': [r[1] for r in rows]
+    # 1. Weekly Attendance Bar
+    labels_weekly = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    data_weekly = [0]*7
+    data_late_weekly = [0]*7
+    
+    c.execute("""SELECT date, status, COUNT(*) FROM attendance 
+                 WHERE date >= ? GROUP BY date, status""", (week_start.isoformat(),))
+    for r in c.fetchall():
+        d_str, status, count = str(r[0]), r[1], r[2]
+        d_dt = dt.date.fromisoformat(d_str)
+        idx = d_dt.weekday()
+        if status in ['Present', 'Late']:
+            data_weekly[idx] += count
+        if status == 'Late':
+            data_late_weekly[idx] += count
+
+    # 2. Leave Breakdown
+    c.execute("SELECT leave_type, COUNT(*) FROM leave_requests WHERE status='Approved' GROUP BY leave_type")
+    l_rows = c.fetchall()
+    leave_types = {'labels': [r[0] for r in l_rows], 'data': [r[1] for r in l_rows]}
+
+    # 3. Distribution
+    stats = get_stats()
+    dist = {
+        'labels': ['Present', 'Absent', 'On Leave'],
+        'data': [stats['present'], stats['absent'], stats['on_leave']]
     }
 
+    conn.close()
+    return {
+        'weekly_att': {'labels': labels_weekly, 'data': data_weekly},
+        'weekly_late': {'labels': labels_weekly, 'data': data_late_weekly},
+        'leave_donut': leave_types,
+        'dist_donut': dist
+    }
+
+def get_top_performers(limit=5):
+    conn = get_conn()
+    c = conn.cursor()
+    today = dt.date.today()
+    month_start = today.replace(day=1).isoformat()
+    
+    # Simple algorithm: Sort by presence count, then by late count (inverse)
+    c.execute("""
+        SELECT u.employee_id, u.name, 
+               COUNT(a.id) as days_present,
+               SUM(CASE WHEN a.status='Late' THEN 1 ELSE 0 END) as late_count
+        FROM users u
+        LEFT JOIN attendance a ON u.employee_id = a.employee_id AND a.date >= ? AND a.status IN ('Present', 'Late')
+        WHERE u.role != 'admin'
+        GROUP BY u.employee_id, u.name
+        ORDER BY days_present DESC, late_count ASC
+    """, (month_start,))
+    
+    rows = c.fetchall()
+    performers = []
+    total_working_days = today.day
+    
+    for r in rows[:limit]:
+        emp_id, name, pres_count, late_count = r
+        # Get leave count for this month
+        c.execute("SELECT COUNT(*) FROM leave_requests WHERE employee_id=? AND status='Approved' AND from_date>=?", (emp_id, month_start))
+        leave_count = c.fetchone()[0] or 0
+        
+        pct = round((pres_count / total_working_days * 100)) if total_working_days > 0 else 0
+        performers.append({
+            'name': name,
+            'id': emp_id,
+            'pct': pct,
+            'late': late_count,
+            'leaves': leave_count
+        })
+        
+    conn.close()
+    return performers
+
 def get_employee_analytics(employee_id):
-    # Preserve the existing employee analytics function logic
-    # (OMITTED for brevity in tool call, but I will include it in the real write_to_file)
-    return {}
+    import datetime as dt
+    conn = get_conn()
+    c = conn.cursor()
+    today = dt.date.today()
+    month_start = today.replace(day=1).isoformat()
+
+    # Summary Stats
+    c.execute("""SELECT status, COUNT(*) as cnt FROM attendance
+                 WHERE employee_id=? AND date>=? GROUP BY status""", (employee_id, month_start))
+    att_rows = {r[0].lower(): r[1] for r in c.fetchall()}
+    present = att_rows.get('present', 0)
+    late = att_rows.get('late', 0)
+    
+    total_days = today.day
+    pct = round((present + late) / total_days * 100) if total_days > 0 else 0
+    
+    c.execute("SELECT COUNT(*) FROM leave_requests WHERE employee_id=? AND status='Approved' AND from_date>=?", (employee_id, month_start))
+    leaves = c.fetchone()[0] or 0
+    
+    c.execute("SELECT SUM(working_hours) FROM attendance WHERE employee_id=? AND date>=?", (employee_id, month_start))
+    hours = round(c.fetchone()[0] or 0, 1)
+
+    # Monthly Bar (Dates)
+    labels_bar, data_bar = [], []
+    c.execute("SELECT date, working_hours FROM attendance WHERE employee_id=? AND date>=? ORDER BY date ASC", (employee_id, month_start))
+    trend_map = {str(r[0]): r[1] for r in c.fetchall()}
+    for i in range(1, today.day + 1):
+        d_str = today.replace(day=i).isoformat()
+        labels_bar.append(d_str[-2:]) # Day Number
+        data_bar.append(trend_map.get(d_str, 0))
+
+    # Leave Donut
+    c.execute("SELECT leave_type, COUNT(*) FROM leave_requests WHERE employee_id=? AND status='Approved' GROUP BY leave_type", (employee_id,))
+    l_rows = c.fetchall()
+    leave_donut = {
+        'labels': [r[0] for r in l_rows] if l_rows else ['No Leaves'],
+        'data': [r[1] for r in l_rows] if l_rows else [0]
+    }
+
+    conn.close()
+    return {
+        'attendance_pct': pct,
+        'late_count_month': late,
+        'leaves_taken_month': leaves,
+        'working_hours_month': hours,
+        'chart_monthly_bar': {'labels': labels_bar, 'data': data_bar},
+        'chart_leave_donut': leave_donut
+    }

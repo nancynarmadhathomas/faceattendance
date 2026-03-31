@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
 </head>
 <body class="dark-theme">
 
@@ -35,6 +35,9 @@
         <i data-lucide="file-text"></i><span>Leaves</span>
         {% set pending = leave_reqs | selectattr('status','eq','Pending') | list %}
         {% if pending %}<span class="pending-badge">{{ pending|length }}</span>{% endif %}
+      </a>
+      <a href="/admin/analytics" class="nav-btn {{ 'active' if active_tab == 'analytics' else '' }}">
+        <i data-lucide="bar-chart-2"></i><span>Analytics</span>
       </a>
       
       <div style="margin-top:auto;padding-top:24px;border-top:1px solid var(--border)">
@@ -117,107 +120,49 @@
     
     {% if current_tab == 'attendance' %}
       <div class="dashboard-content">
-        
-        <!-- Row 1: Metrics -->
-        <div class="metrics-grid">
-          <div class="metric-card clickable-card" onclick="location.href='/admin/employees'">
-            <div class="metric-icon" style="background:rgba(79,70,229,0.1);color:var(--primary)"><i data-lucide="users"></i></div>
+        <!-- ROW 1: TOP KPI CARDS -->
+        <div class="metrics-grid" style="margin-bottom:24px">
+          <div class="metric-card">
+            <div class="metric-icon" style="background:rgba(99,102,241,0.1);color:var(--primary-light)"><i data-lucide="users"></i></div>
             <div class="metric-value">{{ stats.total }}</div>
             <div class="metric-label">Total Employees</div>
           </div>
-          <div class="metric-card clickable-card" onclick="location.href='/admin/attendance?status=present'">
+          <div class="metric-card">
             <div class="metric-icon" style="background:rgba(16,185,129,0.1);color:var(--success)"><i data-lucide="user-check"></i></div>
             <div class="metric-value">{{ stats.present }}</div>
             <div class="metric-label">Present Today</div>
           </div>
-          <div class="metric-card clickable-card" onclick="location.href='/admin/attendance?status=late'">
-            <div class="metric-icon" style="background:rgba(245,158,11,0.1);color:var(--warning)"><i data-lucide="clock"></i></div>
-            <div class="metric-value">{{ stats.late }}</div>
-            <div class="metric-label">Late Today</div>
-          </div>
-          <div class="metric-card clickable-card" onclick="location.href='/admin/attendance?status=absent'">
+          <div class="metric-card">
             <div class="metric-icon" style="background:rgba(239,68,68,0.1);color:var(--danger)"><i data-lucide="user-x"></i></div>
             <div class="metric-value">{{ stats.absent }}</div>
             <div class="metric-label">Absent Today</div>
           </div>
-          <div class="metric-card clickable-card" onclick="location.href='/admin/leaves'">
-            <div class="metric-icon" style="background:rgba(99,102,241,0.1);color:var(--primary-light)"><i data-lucide="umbrella"></i></div>
+          <div class="metric-card">
+            <div class="metric-icon" style="background:rgba(139,92,246,0.1);color:var(--accent2)"><i data-lucide="umbrella"></i></div>
             <div class="metric-value">{{ stats.on_leave }}</div>
-            <div class="metric-label">On Leave</div>
+            <div class="metric-label">On Leave Today</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-icon" style="background:rgba(245,158,11,0.1);color:var(--warning)"><i data-lucide="clock"></i></div>
+            <div class="metric-value">{{ stats.late }}</div>
+            <div class="metric-label">Late Today</div>
           </div>
         </div>
 
-        <!-- Row 2: Analytics -->
-        <div class="main-analytics-grid">
-          <div class="summary-card">
-            <div class="summary-header"><h3>Attendance Summary</h3></div>
-            <div class="summary-stats">
-              <div class="summary-item">
-                <span class="val">{{ stats.attendance_rate }}%</span>
-                <span class="lab">Avg Attendance Rate</span>
-              </div>
-              <div class="summary-item">
-                <span class="val">{{ stats.avg_hours }}h</span>
-                <span class="lab">Avg Working Hours</span>
-              </div>
-              <div class="summary-item">
-                <span class="val">{{ ((stats.late / stats.present * 100) | round(1)) if stats.present > 0 else 0 }}%</span>
-                <span class="lab">Late Percentage</span>
-              </div>
-              <div class="summary-item">
-                <span class="val">{{ stats.total }}</span>
-                <span class="lab">Active Contracts</span>
-              </div>
-            </div>
-            
-            <div style="margin-top:auto">
-              <div style="display:flex;justify-content:space-between;font-size:0.85rem;margin-bottom:8px">
-                <span style="font-weight:600">Company Attendance Health</span>
-                <span style="color:var(--primary-light)">{{ stats.attendance_rate }}%</span>
-              </div>
-              <div style="height:8px;background:var(--surface2);border-radius:10px;overflow:hidden">
-                <div style="width:{{ stats.attendance_rate }}%;height:100%;background:linear-gradient(90deg, var(--primary), var(--primary-light));border-radius:10px"></div>
-              </div>
-            </div>
-
-            <button onclick="location.href='/admin/reports'" class="btn btn-primary btn-block" style="margin-top:10px">View Full Report</button>
-          </div>
-
-          <div class="metric-card" style="padding:28px">
-            <div class="flex-between mb-4">
-              <h3 style="font-size:1.1rem;font-weight:700">Attendance Performance</h3>
-              <div style="font-size:0.75rem;color:var(--text-dim)">Days Present per Employee</div>
-            </div>
-            <div id="chart-main" style="height:280px; width: 100%;">
-              <canvas id="analyticsChart"></canvas>
-            </div>
-          </div>
-        </div>
-
-        <!-- Row 3: Tables & Feed -->
-        <div class="activity-grid">
+        <!-- ROW 2: RECENT MONITORING -->
+        <div class="activity-grid" style="grid-template-columns: 1.5fr 1fr; gap: 24px;">
           <div class="metric-card">
             <h3 style="font-size:1.1rem;font-weight:700;margin-bottom:20px">Today's Attendance</h3>
             <div style="overflow-x:auto">
-              <table class="table" id="today-table">
-                <thead>
-                  <tr>
-                    <th>Employee</th>
-                    <th>Check In</th>
-                    <th>Check Out</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
+              <table class="table">
+                <thead><tr><th>Employee</th><th>In</th><th>Out</th><th>Status</th></tr></thead>
                 <tbody>
                   {% for a in attend %}
                   <tr class="row-clickable" onclick="location.href='/admin/employee/{{ a.employee_id }}'">
-                    <td><strong>{{ a.name }}</strong><div style="font-size:0.7rem;color:var(--text-dim)">{{ a.employee_id }}</div></td>
+                    <td><strong>{{ a.name }}</strong></td>
                     <td style="font-family:monospace">{{ a.check_in or '—' }}</td>
                     <td style="font-family:monospace">{{ a.check_out or '—' }}</td>
-                    <td>
-                      {% set s = a.status or 'Absent' %}
-                      <span class="badge badge-{{ s | lower }}">{{ s }}</span>
-                    </td>
+                    <td><span class="badge badge-{{ (a.status or 'Absent') | lower }}">{{ a.status or 'Absent' }}</span></td>
                   </tr>
                   {% else %}
                   <tr><td colspan="4" style="text-align:center;padding:40px;color:var(--text-dim)">No activity yet.</td></tr>
@@ -226,15 +171,11 @@
               </table>
             </div>
           </div>
-
           <div class="metric-card">
-            <div class="feed-header">
-              <h3 style="font-size:1.1rem;font-weight:700">Recent Activity</h3>
-              <a href="/admin/activity" style="font-size:0.75rem;color:var(--primary-light)">View All</a>
-            </div>
-            <div class="activity-feed" id="activity-feed">
+            <h3 style="font-size:1.1rem;font-weight:700;margin-bottom:20px">Recent Activity</h3>
+            <div class="activity-feed">
               {% for r in recent[:5] %}
-              <div class="feed-item row-clickable" onclick="location.href='/admin/employee/{{ r.employee_id }}'">
+              <div class="feed-item">
                 <div class="feed-avatar" style="color:var(--primary)">{{ r.name[0] }}</div>
                 <div class="feed-content">
                   <p><strong>{{ r.name }}</strong> {{ 'was late' if r.status == 'Late' else 'is here' if r.status == 'Present' else 'is missing' }}</p>
@@ -245,49 +186,84 @@
             </div>
           </div>
         </div>
+      </div>
 
-        <!-- Row 4: Late & Progress -->
-        <div class="activity-grid">
-          <div class="metric-card">
-            <h3 style="font-size:1.1rem;font-weight:700;margin-bottom:20px">Late Employees</h3>
-            <table class="table" id="late-table">
+    {% elif current_tab == 'analytics' %}
+      <div class="dashboard-content">
+        <!-- ROW 1: TOTAL ATTENDANCE TREND (LINE) -->
+        <div class="metric-card" style="margin-bottom:24px; padding: 24px;">
+          <div class="flex-between mb-4">
+            <h3 style="font-size:1.1rem;font-weight:700">Total Attendance Trend</h3>
+            <div style="font-size:0.75rem;color:var(--text-dim)">Present vs Absent vs On Leave</div>
+          </div>
+          <div id="chart-org-trend" style="height:320px; width:100%"></div>
+        </div>
+
+        <!-- ROW 2: SPLIT GRID - WEEKLY DATA -->
+        <div class="activity-grid" style="grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+          <div class="metric-card" style="padding: 24px;">
+            <h3 style="font-size:1rem;font-weight:700;margin-bottom:16px">Weekly Attendance</h3>
+            <div id="chart-weekly-att" style="height:250px; width:100%"></div>
+          </div>
+          <div class="metric-card" style="padding: 24px;">
+            <h3 style="font-size:1rem;font-weight:700;margin-bottom:16px">Late Employees per Week</h3>
+            <div id="chart-weekly-late" style="height:250px; width:100%"></div>
+          </div>
+        </div>
+
+        <!-- ROW 3: SPLIT GRID - DISTRIBUTION -->
+        <div class="activity-grid" style="grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+          <div class="metric-card" style="padding: 24px;">
+            <h3 style="font-size:1rem;font-weight:700;margin-bottom:16px">Leave Type Breakdown</h3>
+            <div id="chart-leave-donut" style="height:250px; width:100%"></div>
+          </div>
+          <div class="metric-card" style="padding: 24px;">
+            <h3 style="font-size:1rem;font-weight:700;margin-bottom:16px">Attendance Distribution</h3>
+            <div id="chart-att-dist" style="height:250px; width:100%"></div>
+          </div>
+        </div>
+
+        <!-- ROW 4: TOP PERFORMERS TABLE -->
+        <div class="metric-card" style="margin-bottom:24px">
+          <div class="card-header" style="padding: 20px 24px; border-bottom: 1px solid var(--border)">
+            <h3 style="font-size:1.1rem;font-weight:700">Top Performers</h3>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="table">
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th>Time</th>
-                  <th>Delay</th>
+                  <th>Employee Name</th>
+                  <th>ID</th>
+                  <th>Attendance %</th>
+                  <th>Late Count</th>
+                  <th>Leaves</th>
                 </tr>
               </thead>
               <tbody>
-                {% for a in attend if a.status == 'Late' %}
-                <tr class="row-clickable" onclick="location.href='/admin/employee/{{ a.employee_id }}'">
-                  <td>{{ a.name }}</td>
-                  <td style="font-family:monospace">{{ a.check_in }}</td>
-                  <td style="color:var(--warning)">Late Arrival</td>
+                {% for p in top_performers %}
+                <tr>
+                  <td><strong>{{ p.name }}</strong></td>
+                  <td><code style="font-size: 0.75rem;">{{ p.id }}</code></td>
+                  <td>
+                    <div style="display:flex;align-items:center;gap:10px">
+                      <span style="min-width: 40px;">{{ p.pct }}%</span>
+                      <div style="flex:1;height:6px;background:var(--surface2);border-radius:10px;overflow:hidden;max-width:80px">
+                        <div style="width:{{ p.pct }}%;height:100%;background:var(--success)"></div>
+                      </div>
+                    </div>
+                  </td>
+                  <td><span class="badge badge-{{ 'late' if p.late > 2 else 'present' }}">{{ p.late }}</span></td>
+                  <td>{{ p.leaves }}</td>
                 </tr>
                 {% else %}
-                <tr><td colspan="3" style="text-align:center;padding:20px;color:var(--text-dim)">No late employees today.</td></tr>
+                <tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-dim)">No data available for top performers.</td></tr>
                 {% endfor %}
               </tbody>
             </table>
           </div>
-
-          <div class="metric-card completion-widget">
-            <h3 style="font-size:1rem;font-weight:700;margin-bottom:20px">Attendance Completion</h3>
-            <div class="circle-progress">
-              <svg width="160" height="160">
-                <circle class="circle-bg" cx="80" cy="80" r="70"></circle>
-                <circle class="circle-val" cx="80" cy="80" r="70" style="stroke-dasharray: 440; stroke-dashoffset: {{ 440 - (440 * stats.attendance_rate / 100) }}"></circle>
-              </svg>
-              <div class="circle-text">
-                <span class="pct">{{ stats.attendance_rate }}%</span>
-                <span class="lab">Goal Reached</span>
-              </div>
-            </div>
-          </div>
         </div>
+      </div>
 
-      </div><!-- /dashboard-content -->
     {% else %}
       <div class="dashboard-content">
         {% if current_tab == 'employees' %}
@@ -305,7 +281,14 @@
                 {% for e in employees %}
                 <tr id="erow-{{ e.employee_id }}" class="row-clickable" onclick="location.href='/admin/employee/{{ e.employee_id }}'">
                   <td>{{ e.employee_id }}</td><td><strong>{{ e.name }}</strong></td><td>{{ e.email or '—' }}</td>
-                  <td><button onclick="deleteEmployee('{{ e.employee_id }}'); event.stopPropagation();" class="btn btn-danger btn-sm">Delete</button></td>
+                  <td>
+                    <div style="display:flex;gap:8px">
+                      <button onclick="showEmployeeModal(); event.stopPropagation();" class="btn btn-success btn-sm" style="display:flex;align-items:center;gap:4px">
+                        <i data-lucide="plus" style="width:14px;height:14px"></i> Add
+                      </button>
+                      <button onclick="deleteEmployee('{{ e.employee_id }}'); event.stopPropagation();" class="btn btn-danger btn-sm">Delete</button>
+                    </div>
+                  </td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -406,6 +389,12 @@
 </div>
 
 <!-- Scripts -->
+<script>
+  window.ADMIN_DATA = {
+    trend: {{ admin_analytics | tojson }},
+    details: {{ details | tojson }}
+  };
+</script>
 <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
 <script src="{{ url_for('static', filename='js/admin_analytics.js') }}"></script>
 <script>lucide.createIcons();</script>

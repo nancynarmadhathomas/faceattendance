@@ -156,7 +156,7 @@ def admin(tab='attendance'):
         
     # Sanitize and default
     active_tab = (tab or 'attendance').strip().lower()
-    if active_tab not in ['attendance', 'employees', 'meetings', 'leaves', 'reports', 'activity']:
+    if active_tab not in ['attendance', 'employees', 'meetings', 'leaves', 'reports', 'activity', 'analytics']:
         return redirect(url_for('admin', tab='attendance'))
 
     stats       = db.get_stats()
@@ -167,9 +167,14 @@ def admin(tab='attendance'):
     all_emps    = db.get_all_employees()
     leave_reqs  = db.get_all_leave_requests()
     admin_info  = db.get_employee(session.get('employee_id'))
+
+    # New Analytics Data
+    admin_analytics = db.get_admin_analytics('month') if active_tab == 'analytics' else {}
+    details = db.get_admin_detailed_stats() if active_tab == 'analytics' else {}
+    top_performers = db.get_top_performers() if active_tab == 'analytics' else []
     
     return render_template('admin_dashboard.html',
-                           active_tab=tab,
+                           active_tab=active_tab,
                            stats=stats,
                            admin_info=admin_info,
                            employees=employees,
@@ -178,6 +183,9 @@ def admin(tab='attendance'):
                            meetings=meetings,
                            all_emps=all_emps,
                            leave_reqs=leave_reqs,
+                           admin_analytics=admin_analytics,
+                           details=details,
+                           top_performers=top_performers,
                            fmt_time=db.fmt_time,
                            fmt_date=db.fmt_date)
 

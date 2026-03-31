@@ -196,35 +196,7 @@
     </div>
     {% endif %}
 
-    <!-- §5 QUICK ACTIONS -->
-    <div class="dash-card" style="margin-bottom:20px">
-      <div class="card-title" style="margin-bottom:14px"><i data-lucide="zap" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Quick Actions</div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap">
-        {% if not today %}
-        <button onclick="doCheckin()" class="btn-checkout"
-                style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;border-color:transparent;border-radius:10px;padding:8px 16px;font-size:.85rem;font-weight:600;cursor:pointer">
-          <i data-lucide="clock" style="width:14px;height:14px;vertical-align:middle;margin-right:4px"></i>Clock In
-        </button>
-        {% elif today and not checked_out %}
-        <button onclick="doCheckout()" class="btn-checkout"
-                style="border-radius:10px;padding:8px 16px;font-size:.85rem;font-weight:600">
-          <i data-lucide="log-out" style="width:14px;height:14px;vertical-align:middle;margin-right:4px"></i>Clock Out
-        </button>
-        {% endif %}
-        <button onclick="showSection('leave-sec', document.querySelector('[onclick*=leave-sec]'))"
-                style="background:rgba(99,102,241,.12);color:var(--accent);border:1px solid rgba(99,102,241,.25);border-radius:10px;padding:8px 16px;font-size:.85rem;font-weight:600;cursor:pointer">
-          <i data-lucide="umbrella" style="width:14px;height:14px;vertical-align:middle;margin-right:4px"></i>Apply Leave
-        </button>
-        <button onclick="showSection('attendance', document.querySelector('[onclick*=attendance]'))"
-                style="background:rgba(16,185,129,.1);color:var(--success);border:1px solid rgba(16,185,129,.2);border-radius:10px;padding:8px 16px;font-size:.85rem;font-weight:600;cursor:pointer">
-          <i data-lucide="clipboard-list" style="width:14px;height:14px;vertical-align:middle;margin-right:4px"></i>View Attendance
-        </button>
-        <button onclick="showSection('meetings', document.querySelector('[onclick*=meetings]'))"
-                style="background:rgba(245,158,11,.1);color:var(--warn);border:1px solid rgba(245,158,11,.2);border-radius:10px;padding:8px 16px;font-size:.85rem;font-weight:600;cursor:pointer">
-          <i data-lucide="calendar" style="width:14px;height:14px;vertical-align:middle;margin-right:4px"></i>View Meetings
-        </button>
-      </div>
-    </div>
+    <!-- §2 ATTENDANCE STATS -->
 
     <!-- §2 ATTENDANCE STATS -->
     <div class="stats-row" style="margin-bottom:20px">
@@ -258,113 +230,8 @@
       </div>
     </div>
 
-    <!-- Mid grid: chart + §3 Upcoming Meetings -->
+    <!-- ROW 1: Recent Activity + Upcoming Meetings -->
     <div class="mid-grid" style="margin-bottom:20px">
-
-      <!-- Bar chart -->
-      <div class="dash-card">
-        <div class="card-header">
-          <span class="card-title"><i data-lucide="trending-up" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Weekly Activity</span>
-          <span class="card-sub">Last 7 entries</span>
-        </div>
-        <div class="bar-chart">
-          {% set recent7 = history[:7] | reverse | list %}
-          {% if recent7 %}
-            {% for r in recent7 %}
-              {% set hrs = (r.working_hours or 0) | float %}
-              {% set pct = (hrs / 9 * 100) | int %}
-              {% if pct > 100 %}{% set pct = 100 %}{% endif %}
-              {% if pct < 4 and hrs > 0 %}{% set pct = 4 %}{% endif %}
-              <div class="bar-col">
-                <div class="bar-tooltip">{{ hrs }}h</div>
-                {% if (r.status|lower) == 'late' %}
-                  <div class="bar" style="height:{{ pct }}%;background:var(--warn)"></div>
-                {% else %}
-                  <div class="bar" style="height:{{ pct }}%"></div>
-                {% endif %}
-                <div class="bar-label">{{ fmt_date(r.date)[-5:] }}</div>
-              </div>
-            {% endfor %}
-          {% else %}
-            <p class="text-muted" style="align-self:center;padding:20px;font-size:.8rem">No activity data yet</p>
-          {% endif %}
-        </div>
-      </div>
-
-      <!-- §3 Upcoming Meetings -->
-      <div class="dash-card">
-        <div class="card-header">
-          <span class="card-title"><i data-lucide="calendar" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Upcoming Meetings</span>
-          <span class="card-sub">{{ upcoming|length }} upcoming</span>
-        </div>
-        {% if upcoming %}
-          {% for m in upcoming %}
-            <div class="meet-item">
-              <div class="meet-dot" style="{% if m.meeting_date == today_date %}background:var(--success){% endif %}"></div>
-              <div style="min-width:0">
-                <div class="meet-time">{{ m.meeting_date }} · {{ m.meeting_time }}</div>
-                <div class="meet-name">{{ m.title }}</div>
-                {% if m.description %}<div class="meet-desc">{{ m.description }}</div>{% endif %}
-              </div>
-            </div>
-          {% endfor %}
-        {% else %}
-          <div class="empty-state">
-            <div style="font-size:2.5rem;margin-bottom:8px">📭</div>
-            <p>No upcoming meetings</p>
-          </div>
-        {% endif %}
-      </div>
-    </div>
-
-    <!-- §4 LEAVE BALANCE + §9 NOTIFICATIONS -->
-    <div class="mid-grid" style="margin-bottom:20px">
-
-      <!-- Leave Balance -->
-      <div class="dash-card">
-        <div class="card-header">
-          <span class="card-title"><i data-lucide="umbrella" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Leave Balance</span>
-          <span class="card-sub">Annual allocation</span>
-        </div>
-        {% for lt, bal in leave_bal.items() %}
-        <div style="margin-bottom:12px">
-          <div style="display:flex;justify-content:space-between;font-size:.8rem;margin-bottom:4px">
-            <span>{{ lt }}</span>
-            <span style="font-weight:600;color:{% if bal.remaining <= 2 %}var(--danger){% elif bal.remaining <= 5 %}var(--warn){% else %}var(--success){% endif %}">
-              {{ bal.remaining }} / {{ bal.limit }} left
-            </span>
-          </div>
-          <div style="background:var(--border);border-radius:999px;height:6px">
-            {% set bp = ((bal.used / bal.limit) * 100)|int %}
-            <div style="height:100%;width:{{ bp }}%;border-radius:999px;
-              background:{% if bp >= 80 %}var(--danger){% elif bp >= 50 %}var(--warn){% else %}var(--accent){% endif %};
-              transition:width .5s"></div>
-          </div>
-        </div>
-        {% endfor %}
-      </div>
-
-      <!-- §9 Notifications -->
-      <div class="dash-card">
-        <div class="card-header">
-          <span class="card-title"><i data-lucide="bell" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Notifications</span>
-          <span class="card-sub">{{ notifs|length }} alert(s)</span>
-        </div>
-        {% for n in notifs %}
-        <div style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border)">
-          <span style="flex-shrink:0;opacity:0.8"><i data-lucide="{{ n.icon }}" style="width:16px;height:16px"></i></span>
-          <span style="font-size:.83rem;
-            color:{% if n.type=='success' %}var(--success){% elif n.type=='danger' %}var(--danger){% elif n.type=='warn' %}var(--warn){% elif n.type=='info' %}var(--accent){% else %}var(--muted){% endif %}">
-            {{ n.text }}
-          </span>
-        </div>
-        {% endfor %}
-      </div>
-    </div>
-
-    <!-- §6 RECENT ACTIVITY + §8 PROFILE MINI CARD -->
-    <div class="mid-grid" style="margin-bottom:20px">
-
       <!-- Recent Activity -->
       <div class="dash-card">
         <div class="card-header">
@@ -391,61 +258,98 @@
         {% endfor %}
       </div>
 
-      <!-- §8 Profile Mini Card -->
+      <!-- Upcoming Meetings -->
       <div class="dash-card">
         <div class="card-header">
-          <span class="card-title"><i data-lucide="user" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>My Profile</span>
-          <button onclick="showSection('profile-sec', document.querySelector('[onclick*=profile-sec]'))" class="view-all-btn">Edit →</button>
+          <span class="card-title"><i data-lucide="calendar" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Upcoming Meetings</span>
+          <span class="card-sub">{{ upcoming|length }} upcoming</span>
         </div>
-        <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
-          <div class="profile-photo-wrap" style="width:60px;height:60px;flex-shrink:0">
-            {% if emp.face_image %}
-              <img src="/face-image/{{ emp.employee_id }}" alt="face">
-            {% else %}
-              <div class="profile-initials">{{ emp.name[0]|upper }}</div>
-            {% endif %}
+        {% if upcoming %}
+          {% for m in upcoming %}
+            <div class="meet-item">
+              <div class="meet-dot" style="{% if m.meeting_date == today_date %}background:var(--success){% endif %}"></div>
+              <div style="min-width:0">
+                <div class="meet-time">{{ m.meeting_date }} · {{ m.meeting_time }}</div>
+                <div class="meet-name">{{ m.title }}</div>
+                {% if m.description %}<div class="meet-desc">{{ m.description }}</div>{% endif %}
+              </div>
+            </div>
+          {% endfor %}
+        {% else %}
+          <div class="empty-state">
+            <div style="font-size:2.5rem;margin-bottom:8px">📭</div>
+            <p>No upcoming meetings</p>
           </div>
-          <div>
-            <div style="font-weight:700;font-size:1rem">{{ emp.name }}</div>
-            <div style="font-size:.72rem;color:var(--accent);font-family:monospace;margin-top:2px">{{ emp.employee_id }}</div>
-          </div>
-        </div>
-        <div style="font-size:.8rem">
-          <div class="info-row" style="padding:8px 0"><span>Email</span><strong>{{ emp.email or '—' }}</strong></div>
-          <div class="info-row" style="padding:8px 0"><span>Role</span><strong>{{ (emp.role or 'Employee')|title }}</strong></div>
-          <div class="info-row" style="padding:8px 0;border:none"><span>This Month</span><strong>{{ monthly.present }} present · {{ monthly.late }} late</strong></div>
-        </div>
+        {% endif %}
       </div>
     </div>
 
-    <!-- §10 ATTENDANCE HISTORY (Last 7 days) -->
-    <div class="dash-card mt-4">
-      <div class="card-header">
-        <span class="card-title"><i data-lucide="clipboard-list" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Recent Attendance</span>
-        <button onclick="showSection('attendance',null)" class="view-all-btn">View All →</button>
+    <!-- ROW 2: Leave Balance + Notifications -->
+    <div class="mid-grid" style="margin-bottom:20px">
+      <!-- Leave Balance -->
+      <div class="dash-card">
+        <div class="card-header">
+          <span class="card-title"><i data-lucide="umbrella" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Leave Balance</span>
+          <span class="card-sub">Annual allocation</span>
+        </div>
+        {% for lt, bal in leave_bal.items() %}
+        <div style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;font-size:.8rem;margin-bottom:4px">
+            <span>{{ lt }}</span>
+            <span style="font-weight:600;color:{% if bal.remaining <= 2 %}var(--danger){% elif bal.remaining <= 5 %}var(--warn){% else %}var(--success){% endif %}">
+              {{ bal.remaining }} / {{ bal.limit }} left
+            </span>
+          </div>
+          <div style="background:var(--border);border-radius:999px;height:6px">
+            {% set bp = ((bal.used / bal.limit) * 100)|int %}
+            <div style="height:100%;width:{{ bp }}%;border-radius:999px;
+              background:{% if bp >= 80 %}var(--danger){% elif bp >= 50 %}var(--warn){% else %}var(--accent){% endif %};
+              transition:width .5s"></div>
+          </div>
+        </div>
+        {% endfor %}
       </div>
-      <table class="dash-table">
-        <thead>
-          <tr>
-            <th>Date</th><th>Check In</th><th>Check Out</th><th>Hours</th><th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for r in history[:7] %}
-          <tr>
-            <td>{{ fmt_date(r.date) }}</td>
-            <td class="mono text-green">{{ fmt_time(r.check_in) }}</td>
-            <td class="mono text-muted">{{ fmt_time(r.check_out) }}</td>
-            <td><strong>{{ r.working_hours or '—' }}{% if r.working_hours %}h{% endif %}</strong></td>
-            <td><span class="pill pill-{{ r.status|lower }}">{{ r.status|title }}</span></td>
-          </tr>
-          {% else %}
-          <tr><td colspan="5" class="empty-row">No records yet. Check in to start tracking.</td></tr>
+
+      <!-- Notifications -->
+      <div class="dash-card">
+        <div class="card-header">
+          <span class="card-title"><i data-lucide="bell" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Notifications</span>
+          <span class="card-sub">{{ notifs|length }} alert(s)</span>
+        </div>
+        {% if notifs %}
+          {% for n in notifs %}
+          <div style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border)">
+            <span style="flex-shrink:0;opacity:0.8"><i data-lucide="{{ n.icon }}" style="width:16px;height:16px"></i></span>
+            <span style="font-size:.83rem;
+              color:{% if n.type=='success' %}var(--success){% elif n.type=='danger' %}var(--danger){% elif n.type=='warn' %}var(--warn){% elif n.type=='info' %}var(--accent){% else %}var(--muted){% endif %}">
+              {{ n.text }}
+            </span>
+          </div>
           {% endfor %}
-        </tbody>
-      </table>
+        {% else %}
+          <div class="empty-state">No new notifications</div>
+        {% endif %}
+      </div>
     </div>
   </section>
+
+  <!-- Floating Action Button -->
+  <div class="fab-container">
+    <div id="fab-panel" class="fab-panel">
+      <button class="fab-item" onclick="showSection('leave-sec', document.querySelector('[onclick*=leave-sec]')); toggleFAB();">
+        <i data-lucide="umbrella"></i> Apply Leave
+      </button>
+      <button class="fab-item" onclick="showSection('attendance', document.querySelector('[onclick*=attendance]')); toggleFAB();">
+        <i data-lucide="clipboard-list"></i> Attendance
+      </button>
+      <button class="fab-item" onclick="showSection('meetings', document.querySelector('[onclick*=meetings]')); toggleFAB();">
+        <i data-lucide="calendar"></i> Meetings
+      </button>
+    </div>
+    <button id="fab-trigger" class="fab-trigger" onclick="toggleFAB()" title="Quick Actions">
+      <i data-lucide="plus" id="fab-icon"></i>
+    </button>
+  </div>
 
 
   <!-- ════════ ATTENDANCE ════════ -->
@@ -634,9 +538,11 @@
   </section>
 
   <!-- ════════ ANALYTICS ════════ -->
+  <!-- ════════ ANALYTICS ════════ -->
+  <!-- ════════ ANALYTICS ════════ -->
   <section id="analytics" class="dash-section hidden">
-    <!-- SECTION 1 — SUMMARY CARDS -->
-    <div class="stats-row" style="margin-bottom:20px">
+    <!-- ROW 1 — KPI CARDS -->
+    <div class="stats-row" style="margin-bottom:24px">
       <div class="stat-tile" style="--c:#8b5cf6">
         <div class="stat-icon"><i data-lucide="activity" style="width:20px;height:20px;color:#8b5cf6"></i></div>
         <div class="stat-body">
@@ -647,7 +553,7 @@
       <div class="stat-tile" style="--c:#f59e0b">
         <div class="stat-icon"><i data-lucide="alert-triangle" style="width:20px;height:20px;color:#f59e0b"></i></div>
         <div class="stat-body">
-          <div class="stat-label">Late Count (month)</div>
+          <div class="stat-label">Late Count</div>
           <div class="stat-val">{{ analytics.late_count_month }}</div>
         </div>
       </div>
@@ -667,169 +573,63 @@
       </div>
     </div>
 
-    <!-- SECTION 2 & 3 — MONTHLY ATTENDANCE & WORKING HOURS -->
-    <div class="grid-2" style="gap:20px;margin-bottom:20px">
-      <!-- SECTION 2: ATTENDANCE PIE -->
-      <div class="dash-card">
-        <div class="card-header">
-          <span class="card-title"><i data-lucide="pie-chart" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Monthly Attendance</span>
-        </div>
-        <div id="chart-attendance-pie" style="min-height: 250px;"></div>
-      </div>
-
-      <!-- SECTION 3: WEEKLY HOURS BAR -->
-      <div class="dash-card">
-        <div class="card-header">
-          <span class="card-title"><i data-lucide="bar-chart-2" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Weekly Working Hours</span>
-        </div>
-        <div id="chart-weekly-bar" style="min-height: 250px;"></div>
-      </div>
-    </div>
-
-    <!-- SECTION 6: MONTHLY TREND LINE -->
-    <div class="dash-card" style="margin-bottom:20px">
+    <!-- ROW 2 — MONTHLY WORKING HOURS -->
+    <div class="dash-card" style="margin-bottom:24px">
       <div class="card-header">
-        <span class="card-title"><i data-lucide="trending-up" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Monthly Attendance Trend</span>
+        <span class="card-title"><i data-lucide="bar-chart-2" style="width:15px;height:15px;vertical-align:middle;margin-right:8px"></i>Monthly Working Hours</span>
       </div>
-      <div id="chart-monthly-line" style="min-height: 300px;"></div>
+      <div id="chart-monthly-bar" style="min-height: 300px; padding: 10px;"></div>
     </div>
 
-    <!-- SECTION 4 & 5 — LATE & LEAVE CHARTS -->
-    <div class="grid-2" style="gap:20px;margin-bottom:20px">
-      <!-- SECTION 4: LATE BAR -->
-      <div class="dash-card">
-        <div class="card-header">
-          <span class="card-title"><i data-lucide="alert-octagon" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Late Analytics (Per Week)</span>
-        </div>
-        <div id="chart-late-bar" style="min-height: 250px;"></div>
-      </div>
-
-      <!-- SECTION 5: LEAVE DONUT -->
-      <div class="dash-card">
-        <div class="card-header">
-          <span class="card-title"><i data-lucide="umbrella" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Leave Type Breakdown</span>
-        </div>
-        <div id="chart-leave-donut" style="min-height: 250px;"></div>
-      </div>
-    </div>
-
-    <!-- SECTION 7: CHECK-IN PATTERN -->
-    <div class="dash-card" style="margin-bottom:20px">
+    <!-- ROW 3 — LEAVE BREAKDOWN -->
+    <div class="dash-card" style="max-width: 600px; margin-bottom: 24px;">
       <div class="card-header">
-        <span class="card-title"><i data-lucide="log-in" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Check-In Time Pattern</span>
+        <span class="card-title"><i data-lucide="pie-chart" style="width:15px;height:15px;vertical-align:middle;margin-right:8px"></i>Leave Breakdown</span>
       </div>
-      <div id="chart-checkin-line" style="min-height: 300px;"></div>
+      <div id="chart-leave-donut" style="min-height: 280px; padding: 10px;"></div>
     </div>
-
   </section>
 
-  <!-- Chart Init Script -->
+  <!-- Analytics Script -->
   <script>
     document.addEventListener('DOMContentLoaded', function() {
-      const dark = document.body.classList.contains('dark-mode') || true;
       const data = {{ analytics | tojson }};
-      const colors = ['#10b981', '#f59e0b', '#6366f1', '#ef4444', '#8b5cf6', '#ec4899'];
-
       const commonOptions = {
         chart: { foreColor: '#94a3b8', toolbar: { show: false }, background: 'transparent' },
         theme: { mode: 'dark' },
-        grid: { borderColor: '#334155', strokeDashArray: 4 }
+        grid: { borderColor: 'rgba(255,255,255,0.05)', strokeDashArray: 4 }
       };
 
-      // 1. Attendance Pie
-      new ApexCharts(document.querySelector("#chart-attendance-pie"), {
-        ...commonOptions,
-        series: data.chart_attendance_pie.data,
-        labels: data.chart_attendance_pie.labels,
-        chart: { ...commonOptions.chart, type: 'pie', height: 280 },
-        colors: ['#10b981', '#f59e0b', '#6366f1', '#ef4444'],
-        stroke: { show: false },
-        legend: { position: 'bottom' }
-      }).render();
-
-      // 2. Weekly Bar
-      new ApexCharts(document.querySelector("#chart-weekly-bar"), {
-        ...commonOptions,
-        series: [{ name: 'Hours', data: data.chart_weekly_hours.data }],
-        chart: { ...commonOptions.chart, type: 'bar', height: 280 },
-        colors: ['#6366f1'],
-        plotOptions: { bar: { borderRadius: 6, distributed: true } },
-        xaxis: { categories: data.chart_weekly_hours.labels }
-      }).render();
-
-      // 3. Monthly Line
-      new ApexCharts(document.querySelector("#chart-monthly-line"), {
-        ...commonOptions,
-        series: [{ name: 'Working Hours', data: data.chart_monthly_trend.data }],
-        chart: { ...commonOptions.chart, type: 'area', height: 320 },
-        colors: ['#10b981'],
-        stroke: { curve: 'smooth', width: 3 },
-        fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.1 } },
-        xaxis: { 
-            categories: data.chart_monthly_trend.labels.map(d => d.split('-')[2]),
-            title: { text: 'Day of Month' }
-        },
-        yaxis: { title: { text: 'Hours' } }
-      }).render();
-
-      // 4. Late Bar
-      new ApexCharts(document.querySelector("#chart-late-bar"), {
-        ...commonOptions,
-        series: [{ name: 'Late Count', data: data.chart_weekly_late.data }],
-        chart: { ...commonOptions.chart, type: 'bar', height: 280 },
-        colors: ['#f59e0b'],
-        plotOptions: { bar: { borderRadius: 8, columnWidth: '40%' } },
-        xaxis: { categories: data.chart_weekly_late.labels }
-      }).render();
-
-      // 5. Leave Donut
-      new ApexCharts(document.querySelector("#chart-leave-donut"), {
-        ...commonOptions,
-        series: data.chart_leave_donut.data,
-        labels: data.chart_leave_donut.labels,
-        chart: { ...commonOptions.chart, type: 'donut', height: 280 },
-        colors: ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#10b981'],
-        stroke: { show: false },
-        legend: { position: 'bottom' }
-      }).render();
-
-      // 6. Check-in Line
-      new ApexCharts(document.querySelector("#chart-checkin-line"), {
-        ...commonOptions,
-        series: [{ 
-            name: 'Check-in Time', 
-            data: data.chart_checkin_trend.data 
-        }],
-        chart: { ...commonOptions.chart, type: 'line', height: 320 },
-        colors: ['#8b5cf6'],
-        stroke: { curve: 'stepline', width: 3 },
-        markers: { size: 4 },
-        xaxis: { 
-            categories: data.chart_checkin_trend.labels.map(d => d.split('-')[2]),
-            title: { text: 'Day of Month' }
-        },
-        yaxis: {
-          labels: {
-            formatter: function(val) {
-              if(!val) return '--:--';
-              const h = Math.floor(val/60);
-              const m = val % 60;
-              return `${h}:${m < 10 ? '0' + m : m}`;
-            }
+      // 1. Monthly Working Hours Bar
+      if (document.querySelector("#chart-monthly-bar")) {
+        new ApexCharts(document.querySelector("#chart-monthly-bar"), {
+          ...commonOptions,
+          series: [{ name: 'Hours Worked', data: data.chart_monthly_bar.data }],
+          chart: { ...commonOptions.chart, type: 'bar', height: 300 },
+          colors: ['#6366f1'],
+          plotOptions: { bar: { borderRadius: 4, columnWidth: '60%' } },
+          xaxis: { 
+            categories: data.chart_monthly_bar.labels,
+            title: { text: 'Date', style: { color: '#64748b' } },
+            axisBorder: { show: false }, axisTicks: { show: false }
           },
-          title: { text: 'Time' }
-        },
-        tooltip: {
-            y: {
-                formatter: function(val) {
-                    if(!val) return 'Not Clocked In';
-                    const h = Math.floor(val/60);
-                    const m = val % 60;
-                    return `${h}:${m < 10 ? '0' + m : m}`;
-                }
-            }
-        }
-      }).render();
+          yaxis: { title: { text: 'Hours', style: { color: '#64748b' } } }
+        }).render();
+      }
+
+      // 2. Leave Breakdown Donut
+      if (document.querySelector("#chart-leave-donut")) {
+        new ApexCharts(document.querySelector("#chart-leave-donut"), {
+          ...commonOptions,
+          series: data.chart_leave_donut.data,
+          labels: data.chart_leave_donut.labels,
+          chart: { ...commonOptions.chart, type: 'donut', height: 280 },
+          colors: ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#10b981'],
+          stroke: { show: false },
+          legend: { position: 'bottom', fontSize: '13px' },
+          plotOptions: { pie: { donut: { size: '70%', labels: { show: true, total: { show: true, label: 'Leaves' } } } } }
+        }).render();
+      }
     });
   </script>
 

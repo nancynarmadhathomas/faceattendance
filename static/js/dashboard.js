@@ -199,6 +199,32 @@ async function doCheckout() {
   }
 }
 
+// FAB Toggle Logic
+function toggleFAB() {
+  const panel = document.getElementById('fab-panel');
+  const icon = document.getElementById('fab-icon');
+  if (!panel || !icon) return;
+
+  const isActive = panel.classList.toggle('active');
+  if (isActive) {
+    icon.setAttribute('data-lucide', 'x');
+  } else {
+    icon.setAttribute('data-lucide', 'plus');
+  }
+  if (window.lucide) lucide.createIcons();
+}
+
+// Close FAB when clicking outside
+document.addEventListener('click', (e) => {
+  const container = document.querySelector('.fab-container');
+  const panel = document.getElementById('fab-panel');
+  if (container && !container.contains(e.target)) {
+    if (panel && panel.classList.contains('active')) {
+      toggleFAB();
+    }
+  }
+});
+
 // Poll meetings
 async function pollMeetings() {
   try {
