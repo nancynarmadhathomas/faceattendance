@@ -73,7 +73,7 @@
   </div>
 
   <nav class="sidebar-nav">
-    <a class="nav-item active" onclick="showSection('overview',this)">
+    <a class="nav-item {{ 'active' if active_tab == 'overview' else '' }}" href="/dashboard">
       <span class="nav-icon"><i data-lucide="layout-dashboard" style="width:16px;height:16px"></i></span> Overview
     </a>
     <a class="nav-item" onclick="showSection('attendance',this)">
@@ -91,7 +91,7 @@
     <a class="nav-item" onclick="showSection('analytics',this)">
       <span class="nav-icon"><i data-lucide="bar-chart-2" style="width:16px;height:16px"></i></span> Analytics
     </a>
-    <a class="nav-item" onclick="showSection('project-work',this)">
+    <a class="nav-item {{ 'active' if active_tab == 'project-work' else '' }}" href="/project-work">
       <span class="nav-icon"><i data-lucide="briefcase" style="width:16px;height:16px"></i></span> Project Work
     </a>
     <a class="nav-item" onclick="showSection('profile-sec',this)">
@@ -154,7 +154,7 @@
 
 
   <!-- ════════ OVERVIEW ════════ -->
-  <section id="overview" class="dash-section">
+  <section id="overview" class="dash-section {{ 'hidden' if active_tab != 'overview' else '' }}">
 
     <!-- §1 TODAY SUMMARY BANNER -->
     <div class="dash-card" style="margin-bottom:20px;border-left:3px solid var(--accent)">
@@ -326,34 +326,35 @@
         </div>
         {% if notifs %}
           {% for n in notifs %}
-          <div style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border)">
-            <span style="flex-shrink:0;opacity:0.8"><i data-lucide="{{ n.icon }}" style="width:16px;height:16px"></i></span>
-            <span style="font-size:.83rem; cursor:pointer;" onclick="handleNotificationClick('{{ n.text }}')">
-              {{ n.text }}
-            </span>
+          <div style="display:flex;flex-direction:column;border-bottom:1px solid var(--border);padding:10px 0">
+            <div style="display:flex;gap:10px;align-items:flex-start">
+              <span style="flex-shrink:0;opacity:0.8"><i data-lucide="{{ n.get('icon', 'bell') }}" style="width:16px;height:16px"></i></span>
+              <div style="flex:1">
+                <div style="font-size:.83rem; cursor:pointer; font-weight:600; white-space:pre-wrap" onclick="handleNotificationClick({{ n.message|tojson }}, {{ n.get('type','info')|tojson }}, {{ n.get('project_id','')|tojson }}, this)">
+                  {{ n.message }}
+                </div>
+                <!-- Inline Expansion Area -->
+                <div id="inline-project-{{ n.get('project_id','') }}" class="inline-project-info hidden" style="margin-top:12px; background:rgba(255,255,255,0.03); border-radius:8px; padding:12px">
+                   <div id="p-inline-details-{{ n.get('project_id','') }}">
+                      <div id="p-title-{{ n.get('project_id','') }}" style="font-weight:600; font-size:0.9rem; margin-bottom:8px">Loading...</div>
+                      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:0.75rem; color:var(--text-dim); margin-bottom:12px">
+                        <div>Members: <span id="p-members-{{ n.get('project_id','') }}">--</span></div>
+                        <div>Deadline: <span id="p-deadline-{{ n.get('project_id','') }}">--</span></div>
+                      </div>
+                      <div id="p-actions-{{ n.get('project_id','') }}" style="display:flex; gap:8px">
+                        <button onclick="submitProjectResponseInline('{{ n.get('project_id','') }}', 'accepted')" class="btn btn-success btn-xs" style="flex:1">Accept</button>
+                        <button onclick="submitProjectResponseInline('{{ n.get('project_id','') }}', 'declined')" class="btn btn-danger btn-xs" style="flex:1">Decline</button>
+                      </div>
+                      <div id="p-responded-{{ n.get('project_id','') }}" class="hidden" style="text-align:center; padding:5px; background:rgba(255,255,255,0.05); border-radius:4px">
+                        <p style="font-size:0.75rem; margin-bottom:0">You responded to this project.</p>
+                      </div>
+                   </div>
+                </div>
+              </div>
+            </div>
           </div>
           {% endfor %}
           
-          {% if project_tasks %}
-            {% for pt in project_tasks %}
-            <div id="project-task-{{ pt.project_id }}" style="padding:12px 0; border-bottom:1px solid var(--border)">
-              <div style="font-size:0.83rem; margin-bottom:4px"><strong>New Project Assigned:</strong> {{ pt.title }}</div>
-              <div style="font-size:0.7rem; color:var(--muted); margin-bottom:8px">
-                Members Needed: {{ pt.members_wanted }} &bull; Deadline: {{ pt.deadline }}
-              </div>
-              <div style="display:flex; gap:8px">
-                {% if pt.status == 'pending' %}
-                <button onclick="respondProject({{ pt.project_id }}, 'interested', this)" class="btn btn-success btn-xs" style="font-size:0.7rem; padding:4px 12px">Interested</button>
-                <button onclick="respondProject({{ pt.project_id }}, 'not_interested', this)" class="btn btn-danger btn-xs" style="font-size:0.7rem; padding:4px 12px">Not Interested</button>
-                {% else %}
-                <span class="badge badge-{{ 'success' if pt.status == 'interested' else 'danger' }}" style="font-size:0.65rem">
-                  {{ pt.status | replace('_', ' ') | title }}
-                </span>
-                {% endif %}
-              </div>
-            </div>
-            {% endfor %}
-          {% endif %}
         {% else %}
           <div class="empty-state">No new notifications</div>
         {% endif %}
@@ -632,7 +633,7 @@
   </section>
 
   <!-- ════════ PROJECT WORK ════════ -->
-  <section id="project-work" class="dash-section hidden">
+  <section id="project-work" class="dash-section {{ 'hidden' if active_tab != 'project-work' else '' }}">
     <div class="dash-header" style="margin-bottom:24px">
       <div class="dash-title-wrap">
         <h2 class="dash-title">Project Work</h2>
@@ -641,35 +642,40 @@
     </div>
 
     <div class="grid-2">
-      {% for p in projects %}
-      <div class="dash-card" style="border-left: 4px solid {{ 'var(--primary)' if p.my_status == 'Available' else 'var(--success)' }}">
+      {% for p in project_tasks %}
+      {% if p.status == 'pending' or p.status == 'accepted' or p.status == 'declined' %}
+      <div class="dash-card">
         <div class="card-header" style="padding-bottom:10px">
           <span class="card-title" style="font-size:1.05rem">{{ p.title }}</span>
-          <span class="pill {{ 'pill-present' if p.my_status == 'Assigned' else 'pill-late' }}">{{ p.my_status }}</span>
+          {% if p.status == 'accepted' %}
+            <span class="pill pill-present">Accepted</span>
+          {% elif p.status == 'declined' %}
+            <span class="pill pill-absent">Declined</span>
+          {% endif %}
         </div>
         <div style="padding:0 24px 20px">
           <p class="text-muted" style="font-size:0.85rem;margin-bottom:12px;line-height:1.5">{{ p.description }}</p>
           <div style="display:flex;gap:20px;font-size:0.75rem;margin-bottom:16px;color:var(--text-dim)">
-            <span style="display:flex;align-items:center;gap:6px"><i data-lucide="users" style="width:14px;height:14px"></i> {{ p.members_req }} Required</span>
+            <span style="display:flex;align-items:center;gap:6px"><i data-lucide="users" style="width:14px;height:14px"></i> {{ p.members_wanted }} Required</span>
             <span style="display:flex;align-items:center;gap:6px"><i data-lucide="calendar" style="width:14px;height:14px"></i> Deadline: {{ p.deadline }}</span>
           </div>
-          
-          {% if p.my_status == 'Available' %}
-          <div style="display:flex;gap:10px">
-            <button onclick="respondProject({{ p.id }}, 'Interested')" class="btn btn-primary btn-sm" style="flex:1">Interested</button>
-            <button onclick="respondProject({{ p.id }}, 'Not Interested')" class="btn btn-ghost btn-sm" style="flex:1">Not Interested</button>
-          </div>
-          {% else %}
-          <div style="background:rgba(16,185,129,0.1);color:var(--success);padding:10px;border-radius:8px;font-weight:600;font-size:0.8rem;text-align:center">
-            <i data-lucide="check-circle" style="width:14px;height:14px;vertical-align:middle;margin-right:6px"></i> You are assigned to this project
+
+          {% if p.status == 'pending' %}
+          <div id="p-actions-{{ p.project_id }}" style="display:flex;gap:10px">
+            <button onclick="submitProjectResponsePage('{{ p.project_id }}', 'accepted')" class="btn btn-primary btn-sm" style="flex:1">Accept</button>
+            <button onclick="submitProjectResponsePage('{{ p.project_id }}', 'declined')" class="btn btn-ghost btn-sm" style="flex:1">Decline</button>
           </div>
           {% endif %}
+          <div id="p-responded-{{ p.project_id }}" class="hidden" style="text-align:center;padding:10px;background:rgba(16,185,129,0.1);color:var(--success);border-radius:8px;font-weight:600;font-size:0.8rem">
+            <span id="p-res-text-{{ p.project_id }}"></span>
+          </div>
         </div>
       </div>
+      {% endif %}
       {% else %}
       <div class="dash-card" style="grid-column: span 2; text-align:center; padding:60px; color:var(--text-dim)">
         <i data-lucide="briefcase" style="width:40px;height:40px;margin-bottom:16px;opacity:0.5"></i>
-        <p>No new projects available at the moment.</p>
+        <p>No project assignments available.</p>
       </div>
       {% endfor %}
     </div>
@@ -742,16 +748,36 @@
   </div>
 </div>
 
-<!-- Meeting Decline Modal -->
-<div id="decline-modal" class="modal-overlay hidden">
+<!-- Project Detail Modal -->
+<div id="project-modal" class="modal-overlay hidden">
   <div class="modal" style="max-width:400px">
-    <h3>Reason for declining meeting</h3>
-    <div class="form-group" style="margin-top:16px">
-      <textarea id="decline-reason" class="form-control" rows="3" placeholder="Enter reason here..."></textarea>
+    <h3 id="p-modal-title">Project Details</h3>
+    <div style="margin-top:16px">
+      <div style="margin-bottom:12px">
+        <div style="font-size:0.8rem;color:var(--muted)">Project Title</div>
+        <div id="p-title" style="font-weight:600">--</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+        <div>
+          <div style="font-size:0.8rem;color:var(--muted)">Members Wanted</div>
+          <div id="p-members" style="font-weight:600">--</div>
+        </div>
+        <div>
+          <div style="font-size:0.8rem;color:var(--muted)">Deadline</div>
+          <div id="p-deadline" style="font-weight:600">--</div>
+        </div>
+      </div>
+
+      <div id="p-actions" style="display:flex;gap:10px">
+        <button onclick="submitProjectResponse('accepted')" class="btn btn-success" style="flex:1">Accept</button>
+        <button onclick="submitProjectResponse('declined')" class="btn btn-danger" style="flex:1">Decline</button>
+      </div>
+      <div id="p-responded" class="hidden" style="text-align:center;padding:10px;background:rgba(255,255,255,0.05);border-radius:8px">
+        <p style="font-size:0.9rem;margin-bottom:0">You responded to this project.</p>
+      </div>
     </div>
-    <div style="display:flex;gap:10px;margin-top:16px">
-      <button onclick="document.getElementById('decline-modal').classList.add('hidden')" class="btn btn-ghost" style="flex:1">Cancel</button>
-      <button onclick="submitDecline()" class="btn btn-primary" style="flex:1">Submit</button>
+    <div style="margin-top:20px;text-align:center">
+      <button onclick="document.getElementById('project-modal').classList.add('hidden')" class="btn btn-ghost btn-sm">Close</button>
     </div>
   </div>
 </div>
@@ -770,17 +796,27 @@
     }
   });
 
-  async function respondProject(pid, status, btn) {
-    const container = btn.parentElement;
+  async function handleNotificationClick(msg, type, pid, el) {
+    if (type === 'project') {
+      window.location.href = "/project-work";
+    } else {
+      alert(msg);
+    }
+  }
+
+  async function submitProjectResponsePage(pid, status) {
     const resp = await fetch('/employee/project/respond', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ project_id: pid, status: status })
     });
     const res = await resp.json();
-    if(res.success) {
-      // Disable buttons and show badge
-      container.innerHTML = `<span class="badge badge-${status==='interested'?'success':'danger'}" style="font-size:0.65rem">${status === 'interested' ? 'Interested' : 'Not Interested'}</span>`;
+    if (res.success) {
+      document.getElementById(`p-actions-${pid}`).classList.add('hidden');
+      const respDiv = document.getElementById(`p-responded-${pid}`);
+      const respText = document.getElementById(`p-res-text-${pid}`);
+      respDiv.classList.remove('hidden');
+      respText.innerText = (status === 'accepted') ? 'Accepted' : 'Declined';
     } else {
       alert("Error submitting response");
     }

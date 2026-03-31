@@ -114,20 +114,26 @@ def register_page():
 
 @app.route('/dashboard')
 def dashboard():
+    return _render_employee_dashboard('overview')
+
+@app.route('/project-work')
+def project_work_page():
+    return _render_employee_dashboard('project-work')
+
+def _render_employee_dashboard(tab):
     if 'employee_id' not in session:
         return redirect(url_for('index'))
     emp = db.get_employee(session['employee_id'])
     if not emp:
         session.clear()
         return redirect(url_for('index'))
+        
     uid          = session['employee_id']
     history      = db.get_attendance_history(uid)
     today_str    = __import__('datetime').date.today().isoformat()
     
-    # Synchronization fix: Use history[0] if it matches today's date
     today_rec = None
     if history:
-        # history[0]['date'] is already formatted as ISO string by _rows_to_dicts
         if history[0].get('date') == today_str:
             today_rec = history[0]
     
@@ -138,11 +144,12 @@ def dashboard():
     upcoming     = db.get_upcoming_meetings(uid)
     notifs       = db.get_notifications(uid)
     analytics    = db.get_employee_analytics(uid)
-    projects     = db.get_projects_for_employee(uid) # Existing helper if used
+    projects     = db.get_projects_for_employee(uid)
     project_tasks = db.get_employee_project_tasks(uid)
     latest       = history[0] if history else None
 
     return render_template('dashboard.html',
+                           active_tab=tab,
                            emp=emp,
                            today=today_rec,
                            latest=latest,
@@ -243,17 +250,34 @@ def admin_project_create():
 def employee_project_respond():
     if 'employee_id' not in session:
         return jsonify({'success': False}), 401
+    
     data = request.json or {}
     project_id = data.get('project_id')
-    status = data.get('status') # interested, not_interested
+    status = data.get('status') # accepted, declined
+    
     db.update_project_interest_status(project_id, session['employee_id'], status)
     
-    # Notify admin
-    uname = session.get('user_name', session['employee_id'])
-    if status == 'interested':
-        db.add_notification('admin', f"{uname} is interested in project")
-        
+    # Notify admin with specific choice
+    uname = session.get('user_name', session.get('employee_id', 'Employee'))
+    db.add_notification('admin', f"{uname} {status} project assignment")
+    
     return jsonify({'success': True})
+
+@app.route('/api/project/details/<int:pid>')
+def api_project_details(pid):
+    if 'employee_id' not in session:
+        return jsonify({'success': False}), 401
+    
+    details = db.get_project_details(pid, session['employee_id'])
+    if details:
+        return jsonify({
+            'success': True,
+            'title': details['title'],
+            'members_wanted': details['members_wanted'],
+            'deadline': str(details['deadline']),
+            'status': details['user_status']
+        })
+    return jsonify({'success': False, 'message': 'Project not found'}), 404
 
 
 # ---------------------------------------------------------------------------

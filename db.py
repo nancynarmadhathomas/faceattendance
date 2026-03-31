@@ -828,30 +828,38 @@ def create_project_assignment(data):
     
     # For notifications, let's call the global helper for each one to be safe
     for eid in employees:
-        add_notification(eid, f"New Project Assigned: {data['title']}")
+        add_notification(eid, f"Project Assigned\n{data['title']}\nDeadline: {data['deadline']}", type='project', project_id=project_id)
 
 def get_admin_project_list():
     conn = get_conn()
     c = conn.cursor()
     c.execute("""
         SELECT p.*,
-               (SELECT COUNT(*) FROM project_interest WHERE project_id = p.id AND status = 'interested') as interested_count,
-               (SELECT COUNT(*) FROM project_interest WHERE project_id = p.id AND status = 'not_interested') as not_interested_count,
+               (SELECT COUNT(*) FROM project_interest WHERE project_id = p.id AND status = 'accepted') as accepted_count,
+               (SELECT COUNT(*) FROM project_interest WHERE project_id = p.id AND status = 'declined') as declined_count,
                (SELECT COUNT(*) FROM project_interest WHERE project_id = p.id AND status = 'pending') as pending_count
         FROM projects p
         ORDER BY p.created_at DESC
     """)
     rows = _rows_to_dicts(c, c.fetchall())
     
-    # Enrich with interested employee names
+    # Enrich with accepted/declined employee names
     for row in rows:
+        # Get Accepted
         c.execute("""
-            SELECT u.name 
-            FROM project_interest pi
+            SELECT u.name FROM project_interest pi
             JOIN users u ON pi.employee_id = u.employee_id
-            WHERE pi.project_id = ? AND pi.status = 'interested'
+            WHERE pi.project_id = ? AND pi.status = 'accepted'
         """, (row['id'],))
-        row['interested_names'] = [r[0] for r in c.fetchall()]
+        row['accepted_names'] = [r[0] for r in c.fetchall()]
+        
+        # Get Declined
+        c.execute("""
+            SELECT u.name FROM project_interest pi
+            JOIN users u ON pi.employee_id = u.employee_id
+            WHERE pi.project_id = ? AND pi.status = 'declined'
+        """, (row['id'],))
+        row['declined_names'] = [r[0] for r in c.fetchall()]
         
     conn.close()
     return rows

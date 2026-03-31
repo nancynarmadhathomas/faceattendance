@@ -69,24 +69,37 @@
             </div>
             
             <div style="margin-top:15px; padding-top:15px; border-top:1px solid var(--border)">
-              <p style="font-size:0.75rem; color:var(--muted); margin-bottom:8px">Interested Employees:</p>
-              <div style="display:flex; flex-wrap:wrap; gap:6px">
-                {% for name in p.interested_names %}
-                <span style="font-size:0.8rem; background:rgba(16,185,129,0.1); color:var(--success); padding:2px 8px; border-radius:4px">{{ name }}</span>
+              <p style="font-size:0.75rem; color:var(--muted); margin-bottom:8px">Accepted Employees:</p>
+              <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:12px">
+                {% for name in p.accepted_names %}
+                <div style="font-size:0.8rem; background:rgba(16,185,129,0.1); color:var(--success); padding:6px 12px; border-radius:4px">
+                  "{{ name }} accepted project {{ p.title }}"
+                </div>
                 {% else %}
-                <span style="font-size:0.8rem; color:var(--text-dim); font-style:italic">No responses yet</span>
+                <span style="font-size:0.8rem; color:var(--text-dim); font-style:italic">No acceptances yet</span>
+                {% endfor %}
+              </div>
+
+              <p style="font-size:0.75rem; color:var(--muted); margin-bottom:8px">Declined Employees:</p>
+              <div style="display:flex; flex-direction:column; gap:6px">
+                {% for name in p.declined_names %}
+                <div style="font-size:0.8rem; background:rgba(239,68,68,0.1); color:var(--danger); padding:6px 12px; border-radius:4px">
+                  "{{ name }} declined project {{ p.title }}"
+                </div>
+                {% else %}
+                <span style="font-size:0.8rem; color:var(--text-dim); font-style:italic">No declines yet</span>
                 {% endfor %}
               </div>
             </div>
 
             <div style="margin-top:15px; display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; text-align:center">
               <div>
-                <div style="font-size:1.1rem; font-weight:700; color:var(--success)">{{ p.interested_count }}</div>
-                <div style="font-size:0.6rem; text-transform:uppercase">Interested</div>
+                <div style="font-size:1.1rem; font-weight:700; color:var(--success)">{{ p.accepted_count }}</div>
+                <div style="font-size:0.6rem; text-transform:uppercase">Accepted</div>
               </div>
               <div>
-                <div style="font-size:1.1rem; font-weight:700; color:var(--danger)">{{ p.not_interested_count }}</div>
-                <div style="font-size:0.6rem; text-transform:uppercase">Not Interested</div>
+                <div style="font-size:1.1rem; font-weight:700; color:var(--danger)">{{ p.declined_count }}</div>
+                <div style="font-size:0.6rem; text-transform:uppercase">Declined</div>
               </div>
               <div>
                 <div style="font-size:1.1rem; font-weight:700; color:var(--warn)">{{ p.pending_count }}</div>
