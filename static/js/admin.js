@@ -30,6 +30,8 @@ function searchDashboard(query) {
 // ── Dropdowns ──────────────────────────────────
 function toggleDropdown(id) {
   const menu = document.getElementById(id);
+  if (!menu) return;
+
   // Close others
   document.querySelectorAll('.dropdown-menu').forEach(m => {
     if (m.id !== id) m.classList.remove('show');
@@ -53,8 +55,7 @@ function showToast(msg, type = 'success') {
   toast.className = `toast ${type}`;
   
   const icon = type === 'success' ? 'check-circle' : 'alert-circle';
-  // Standardized messages per STRICT PATCH rules
-  const finalMsg = type === 'success' ? 'Action completed successfully' : 'Action failed';
+  const finalMsg = type === 'success' ? 'Action completed successfully' : (msg || 'Action failed');
   
   toast.innerHTML = `
     <i data-lucide="${icon}" style="width:20px;height:20px"></i>
@@ -67,7 +68,7 @@ function showToast(msg, type = 'success') {
   // Auto-hide
   setTimeout(() => {
     toast.style.opacity = '0';
-    toast.style.transform = 'translateX(20px)';
+    toast.style.transform = 'translateY(10px) scale(0.95)';
     setTimeout(() => toast.remove(), 300);
   }, 3000);
 }
@@ -115,6 +116,40 @@ async function saveMeeting() {
   }
 }
 
+// ── Employee Functions ─────────────────────────
+function showEmployeeModal() {
+  document.getElementById('employee-modal').classList.remove('hidden');
+}
+
+async function saveEmployee() {
+  const eid   = document.getElementById('e-id').value;
+  const ename = document.getElementById('e-name').value;
+  const email = document.getElementById('e-email').value;
+  const role  = document.getElementById('e-role').value;
+
+  if (!eid || !ename) {
+    showToast('Employee ID and Name are required.', 'error');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/admin/add-employee', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ employee_id: eid, name: ename, email: email, role: role })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast('Success');
+      setTimeout(() => location.reload(), 800);
+    } else {
+      showToast(data.message || 'Failed', 'error');
+    }
+  } catch (err) {
+    showToast('Network error while adding employee.', 'error');
+  }
+}
+
 // ── Actions ─────────────────────────────────────
 async function leaveAction(id, action) {
   try {
@@ -132,7 +167,7 @@ async function leaveAction(id, action) {
 }
 
 async function deleteEmployee(id) {
-  if (!confirm(`Delete employee ${id}?`)) return;
+  if (!confirm(`Are you sure you want to delete employee ${id}?`)) return;
   try {
     const res = await fetch(`/api/admin/employee/${id}`, { method:'DELETE' });
     const data = await res.json();
@@ -148,7 +183,7 @@ async function deleteEmployee(id) {
 }
 
 async function deleteMeeting(id) {
-  if (!confirm('Delete this meeting?')) return;
+  if (!confirm('Are you sure you want to delete this meeting?')) return;
   try {
     const res = await fetch(`/api/admin/meeting/${id}`, { method:'DELETE' });
     const data = await res.json();

@@ -49,7 +49,7 @@
     <!-- Top Header -->
     <header class="premium-header">
       <div class="header-welcome">
-        <h1>Hi Nancy,</h1>
+        <h1>Hi {{ admin_info.name.split(' ')[0] if admin_info else 'Nancy' }},</h1>
         <p>Welcome back to <strong>FaceAttend</strong> Command Center</p>
       </div>
       
@@ -96,6 +96,17 @@
             <span>Admin</span>
           </div>
           <div id="profile-menu" class="dropdown-menu">
+            <div style="padding:16px;display:flex;flex-direction:column;align-items:center;text-align:center;border-bottom:1px solid var(--border);margin-bottom:8px">
+              <div class="profile-avatar" style="width:56px;height:56px;font-size:1.2rem;margin-bottom:10px">
+                {% if admin_info and admin_info.face_image %}
+                <img src="data:image/jpeg;base64,{{ admin_info.face_image | b64encode }}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">
+                {% else %}
+                {{ admin_info.name[0] if admin_info else 'A' }}
+                {% endif %}
+              </div>
+              <div style="font-weight:700;font-size:0.95rem;color:var(--text)">{{ admin_info.name if admin_info else 'System Admin' }}</div>
+              <div style="font-size:0.75rem;color:var(--text-dim)">{{ admin_info.email if admin_info else 'admin@faceattend.com' }}</div>
+            </div>
             <a href="/logout" class="dropdown-item" style="color:var(--danger)"><i data-lucide="log-out"></i>Logout</a>
           </div>
         </div>
@@ -174,12 +185,8 @@
 
           <div class="metric-card" style="padding:28px">
             <div class="flex-between mb-4">
-              <h3 style="font-size:1.1rem;font-weight:700">Attendance Trend Chart</h3>
-              <select id="analytics-range" onchange="loadAnalytics()" class="form-control" style="width:120px;height:32px;font-size:.8rem;border-radius:8px">
-                <option value="today" selected>Day</option>
-                <option value="week">Week</option>
-                <option value="month">Month</option>
-              </select>
+              <h3 style="font-size:1.1rem;font-weight:700">Attendance Performance</h3>
+              <div style="font-size:0.75rem;color:var(--text-dim)">Days Present per Employee</div>
             </div>
             <div id="chart-main" style="height:280px; width: 100%;">
               <canvas id="analyticsChart"></canvas>
@@ -287,7 +294,10 @@
            <div class="metric-card">
              <div class="flex-between mb-4">
               <h3 style="font-size:1.1rem;font-weight:700">All Employees</h3>
-              <input id="search-emp" oninput="filterTable('emp-body',this.value)" class="form-control" style="width:280px" placeholder="Search...">
+              <div style="display:flex;gap:12px">
+                <input id="search-emp" oninput="filterTable('emp-body',this.value)" class="form-control" style="width:240px" placeholder="Search...">
+                <button onclick="showEmployeeModal()" class="btn btn-primary btn-sm"><i data-lucide="user-plus" style="width:16px;height:16px;margin-right:6px"></i>Add Employee</button>
+              </div>
             </div>
             <table class="table" id="emp-table">
               <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Actions</th></tr></thead>
@@ -305,11 +315,18 @@
            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:24px">
             {% for m in meetings %}
             <div class="metric-card" id="mcard-{{ m.id }}">
+              {% if m.meeting_date == today_str %}
+              <div style="position:absolute;top:12px;left:12px;background:var(--success);color:#fff;font-size:0.6rem;padding:2px 6px;border-radius:4px;font-weight:700">TODAY</div>
+              {% endif %}
               <div style="font-weight:700;font-size:1.1rem;margin-bottom:8px">{{ m.title }}</div>
               <div class="text-muted" style="font-size:0.85rem">{{ m.meeting_date }} at {{ m.meeting_time }}</div>
               <button onclick="deleteMeeting({{ m.id }})" style="position:absolute;top:24px;right:24px;background:none;border:none;color:var(--danger);cursor:pointer">
                 <i data-lucide="trash-2" style="width:18px;height:18px"></i>
               </button>
+              <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px;font-size:0.75rem;color:var(--text-dim)">
+                <i data-lucide="{{ 'user' if m.employee_id else 'users' }}" style="width:14px;height:14px"></i>
+                <span>{{ m.employee_id if m.employee_id else 'All Employees' }}</span>
+              </div>
             </div>
             {% endfor %}
            </div>
@@ -363,6 +380,27 @@
     <div class="modal-actions">
       <button onclick="document.getElementById('meeting-modal').classList.add('hidden')" class="btn btn-ghost">Cancel</button>
       <button onclick="saveMeeting()" class="btn btn-primary">Schedule</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Employee Modal -->
+<div id="employee-modal" class="modal-overlay hidden">
+  <div class="modal-content" style="max-width:400px">
+    <h3>Add New Employee</h3>
+    <div class="form-group"><label>Employee ID</label><input id="e-id" class="form-control" placeholder="emp101"></div>
+    <div class="form-group"><label>Full Name</label><input id="e-name" class="form-control" placeholder="John Doe"></div>
+    <div class="form-group"><label>Email Address</label><input id="e-email" class="form-control" placeholder="john@company.com"></div>
+    <div class="form-group">
+      <label>Role</label>
+      <select id="e-role" class="form-control">
+        <option value="employee">Employee</option>
+        <option value="admin">Administrator</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button onclick="document.getElementById('employee-modal').classList.add('hidden')" class="btn btn-ghost">Cancel</button>
+      <button onclick="saveEmployee()" class="btn btn-primary">Save Employee</button>
     </div>
   </div>
 </div>

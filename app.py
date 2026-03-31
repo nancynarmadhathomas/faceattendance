@@ -11,6 +11,11 @@ app = Flask(__name__)
 app.secret_key = 'face_attendance_secret_2026'
 CORS(app, supports_credentials=True)
 
+@app.template_filter('b64encode')
+def b64encode_filter(s):
+    if not s: return ""
+    return base64.b64encode(s).decode('utf-8')
+
 UPLOAD_FOLDER = os.path.join('static', 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -19,14 +24,38 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 # DeepFace Native Face Engine Helpers
 # ---------------------------------------------------------------------------
 def generate_embedding(image_path):
+    # --- STEP 1: FAST DETECTION (RUST) ---
+    crop_path = image_path.replace('.jpg', '_crop.jpg')
+    rust_bin = os.path.join('rust-face-engine', 'target', 'debug', 'rust-face-engine.exe')
+    if not os.path.exists(rust_bin):
+        # Fallback if binary not built
+        rust_bin = "rust-face-engine.exe" 
+
     try:
-        # Lower strictness on detection to be more lenient with alignment/lighting
+        # Run Rust face detection
+        cmd = [rust_bin, "detect", "--image", image_path, "--output", crop_path]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        
+        if result.returncode == 0:
+            res_json = json.loads(result.stdout)
+            if res_json.get('success') and os.path.exists(crop_path):
+                # SUCCESS: Face detected and cropped by Rust
+                # --- STEP 2: ACCURATE VERIFICATION (DEEPFACE) ---
+                # Use enforce_detection=False because Rust already detected/cropped it
+                objs = DeepFace.represent(img_path=crop_path, model_name="ArcFace", enforce_detection=False)
+                if len(objs) > 0:
+                    embedding = objs[0]['embedding']
+                    return {'success': True, 'embedding': embedding, 'method': 'hybrid'}
+    except Exception as e:
+        print(f"Hybrid detection failed or timed out: {e}")
+
+    # --- FALLBACK: Standard DeepFace (if Rust fails or isn't built) ---
+    try:
         objs = DeepFace.represent(img_path=image_path, model_name="ArcFace", enforce_detection=False)
         if len(objs) == 0:
             return {'success': False, 'message': 'Face not detected. Please align face.'}
-            
         embedding = objs[0]['embedding']
-        return {'success': True, 'embedding': embedding}
+        return {'success': True, 'embedding': embedding, 'method': 'deepface_only'}
     except Exception as e:
         return {'success': False, 'message': str(e)}
 
@@ -113,6 +142,7 @@ def dashboard():
                            notifs=notifs,
                            analytics=analytics,
                            today_date=__import__('datetime').date.today().isoformat(),
+                           today_str=__import__('datetime').date.today().isoformat(),
                            fmt_time=db.fmt_time,
                            fmt_date=db.fmt_date)
 
@@ -136,10 +166,12 @@ def admin(tab='attendance'):
     meetings    = db.get_all_meetings()
     all_emps    = db.get_all_employees()
     leave_reqs  = db.get_all_leave_requests()
+    admin_info  = db.get_employee(session.get('employee_id'))
     
     return render_template('admin_dashboard.html',
                            active_tab=tab,
                            stats=stats,
+                           admin_info=admin_info,
                            employees=employees,
                            attend=attend,
                            recent=recent,
@@ -232,12 +264,16 @@ def api_checkin():
     existing = db.get_today_record(emp_id)
     if existing:
         return jsonify({'success': False, 'message': 'Already checked in today'})
+    now = datetime.now()
     status = determine_status()
     db.log_checkin(emp_id, status=status)
     return jsonify({
-        'success': True,
-        'late':    status == 'Late',
-        'status':  status
+        'success':        True,
+        'late':           status == 'Late',
+        'status':         status,
+        'checked_in':     True,
+        'check_in_time':  now.strftime('%H:%M:%S'),
+        'working_hours':  0
     })
 
 
@@ -309,7 +345,12 @@ def api_checkout():
     if 'employee_id' not in session:
         return jsonify({'success': False})
     hours = db.log_checkout(session['employee_id'])
-    return jsonify({'success': True, 'working_hours': hours})
+    return jsonify({
+        'success':       True,
+        'checked_in':    False,
+        'working_hours': hours,
+        'status':        'absent'
+    })
 
 
 @app.route('/api/meetings', methods=['GET'])
@@ -318,35 +359,6 @@ def api_meetings():
         return jsonify([])
     meetings = db.get_meetings_for_employee(session['employee_id'])
     return jsonify(meetings)
-
-
-@app.route('/api/admin/meeting', methods=['POST'])
-def api_create_meeting():
-    data = request.json or {}
-    db.create_meeting({
-        'title':       data.get('title', 'Untitled'),
-        'description': data.get('description', ''),
-        'date':        data.get('date'),
-        'time':        data.get('time'),
-        'employee_id': data.get('employee_id'),
-        'created_by':  session.get('user_id', 'admin')
-    })
-    return jsonify({'success': True})
-
-
-@app.route('/api/admin/meeting/<int:mid>', methods=['DELETE'])
-def api_delete_meeting(mid):
-    db.delete_meeting(mid)
-    return jsonify({'success': True})
-
-
-@app.route('/api/admin/employee/<emp_id>', methods=['DELETE'])
-def api_delete_employee(emp_id):
-    db.delete_employee(emp_id)
-    return jsonify({'success': True})
-
-
-
 
 
 @app.route('/logout')
@@ -408,12 +420,13 @@ def api_create_meeting():
     data = request.json or {}
     if not data.get('title') or not data.get('date') or not data.get('time'):
         return jsonify({'success': False, 'message': 'Title, date, and time are required.'})
+    emp_id = (data.get('employee_id') or '').strip()
     db.create_meeting({
         'title':       data['title'],
         'date':        data['date'],
         'time':        data['time'],
         'description': data.get('description', ''),
-        'employee_id': data.get('employee_id'),
+        'employee_id': emp_id if emp_id else None,
         'created_by':  session.get('employee_id')
     })
     return jsonify({'success': True})
@@ -431,6 +444,30 @@ def api_delete_employee(emp_id):
         return jsonify({'success': False}), 403
     db.delete_employee(emp_id)
     return jsonify({'success': True})
+@app.route('/api/admin/add-employee', methods=['POST'])
+def api_add_employee():
+    if session.get('role') != 'admin' and session.get('employee_id') != 'admin':
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+    data = request.json or {}
+    emp_id = (data.get('employee_id') or '').strip()
+    name   = (data.get('name') or '').strip()
+    email  = (data.get('email') or '').strip()
+    role   = data.get('role', 'employee')
+    if not emp_id or not name:
+        return jsonify({'success': False, 'message': 'Employee ID and Name are required.'})
+    try:
+        db.register_employee({
+            'employee_id': emp_id,
+            'name': name,
+            'email': email,
+            'role': role,
+            'password': 'password123',
+            'face_embedding': None,
+            'face_image': None
+        })
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
 
 
 # ---------------------------------------------------------------------------
@@ -493,9 +530,13 @@ def api_admin_dashboard_data():
 def api_admin_analytics():
     if session.get('role') != 'admin' and session.get('employee_id') != 'admin':
         return jsonify({'success': False})
+    
+    a_type = request.args.get('type', 'trend')
+    if a_type == 'performance':
+        return jsonify(db.get_employee_performance())
+        
     time_range = request.args.get('range', 'today')
-    data = db.get_admin_analytics(time_range)
-    return jsonify(data)
+    return jsonify(db.get_admin_analytics(time_range))
 
 if __name__ == '__main__':
     db.init_db()

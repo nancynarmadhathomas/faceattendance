@@ -100,10 +100,20 @@ def _row_to_dict(cursor, row):
     return dict(zip(cols, row))
 
 def _rows_to_dicts(cursor, rows):
-    if not rows:
-        return []
+    if not rows: return []
     cols = [col[0] for col in cursor.description]
-    return [dict(zip(cols, row)) for row in rows]
+    res = []
+    for row in rows:
+        d = {}
+        for i, val in enumerate(row):
+            # Convert date/datetime/time to ISO strings for template compatibility
+            if isinstance(val, (date, datetime)):
+                val = val.isoformat()
+            elif hasattr(val, 'isoformat'): # catch other potential types
+                val = val.isoformat()
+            d[cols[i]] = val
+        res.append(d)
+    return res
 
 def fmt_time(val):
     if val is None:
@@ -333,9 +343,10 @@ def get_meetings_for_employee(employee_id):
     conn = get_conn()
     c = conn.cursor()
     today = date.today().isoformat()
+    # Use case-insensitive match for the ID
     c.execute("""SELECT * FROM meetings
                  WHERE meeting_date >= ?
-                 AND (employee_id IS NULL OR employee_id = ?)
+                 AND (employee_id IS NULL OR LOWER(employee_id) = LOWER(?))
                  ORDER BY meeting_date, meeting_time""", (today, employee_id))
     rows = _rows_to_dicts(c, c.fetchall())
     conn.close()
@@ -497,12 +508,30 @@ def get_admin_analytics(time_range):
         abs_count = max(0, total_emps - (day_stats['present'] + day_stats['late']))
         absent.append(abs_count)
         
-    conn.close()
     return {
         'labels': labels,
         'present': present,
         'late': late,
         'absent': absent
+    }
+
+def get_employee_performance():
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("""
+        SELECT u.name, COUNT(a.id) as present_count
+        FROM users u
+        LEFT JOIN attendance a ON u.employee_id = a.employee_id AND a.status IN ('Present', 'Late')
+        WHERE u.role != 'admin'
+        GROUP BY u.name
+        ORDER BY present_count DESC
+    """)
+    rows = c.fetchall()
+    conn.close()
+    
+    return {
+        'names': [r[0] for r in rows],
+        'counts': [r[1] for r in rows]
     }
 
 def get_employee_analytics(employee_id):
