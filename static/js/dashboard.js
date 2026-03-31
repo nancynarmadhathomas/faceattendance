@@ -38,7 +38,10 @@ function updateDashboardUI(data) {
     pill.textContent = state.status.charAt(0).toUpperCase() + state.status.slice(1);
   }
   const timeVal = document.getElementById('checkin-time-val');
-  if (timeVal) timeVal.textContent = state.check_in_time || '--:--:--';
+  if (timeVal) timeVal.textContent = state.check_in_time || '--:--';
+
+  const outTimeVal = document.getElementById('checkout-time-val');
+  if (outTimeVal) outTimeVal.textContent = state.check_out_time || '--:--';
 
   // 3. Working Hours Timer Logic
   if (state.checked_in && state.check_in_time) {
@@ -271,4 +274,74 @@ async function submitLeaveRequest() {
   } catch(e) {}
   btn.disabled = false;
   btn.textContent = '📨 Submit Request';
+}
+
+// ── Meeting Responses ──────────────────────────────────────────
+let current_meeting_id = null;
+
+async function respondMeeting(meeting_id, status, reason = null) {
+  try {
+    const res = await fetch('/api/meeting/respond', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ meeting_id, status, reason })
+    });
+    const result = await res.json();
+    if (result.success) {
+      location.reload();
+    } else {
+      alert('❌ Failed to save response.');
+    }
+  } catch (e) {
+    alert('Server error. Please try again.');
+  }
+}
+
+function openDeclineModal(meeting_id) {
+  current_meeting_id = meeting_id;
+  document.getElementById('decline-reason').value = '';
+  document.getElementById('decline-modal').classList.remove('hidden');
+}
+
+async function submitDecline() {
+  const reason = document.getElementById('decline-reason').value.trim();
+  if (!reason) {
+    alert('Please enter a reason for declining.');
+    return;
+  }
+  await respondMeeting(current_meeting_id, 'declined', reason);
+  document.getElementById('decline-modal').classList.add('hidden');
+}
+
+// ── Projects ───────────────────────────────────────────────────────
+async function respondProject(project_id, response) {
+  try {
+    const res = await fetch('/api/project/respond', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id, response })
+    });
+    const result = await res.json();
+    if (result.success) {
+      alert(`Response: ${response} saved!`);
+      location.reload();
+    } else {
+      alert('❌ Failed to save response.');
+    }
+  } catch (e) {
+    alert('Server error. Please try again.');
+  }
+}
+
+function handleNotificationClick(text) {
+  const msg = text.toLowerCase();
+  if (msg.includes('meeting')) {
+    showSection('meetings', document.querySelector('.nav-item[onclick*="meetings"]'));
+  } else if (msg.includes('project')) {
+    showSection('project-work', document.querySelector('.nav-item[onclick*="project-work"]'));
+  } else if (msg.includes('leave')) {
+    showSection('leave-sec', document.querySelector('.nav-item[onclick*="leave-sec"]'));
+  } else {
+    showSection('overview', document.querySelector('.nav-item[onclick*="overview"]'));
+  }
 }

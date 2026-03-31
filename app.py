@@ -121,8 +121,16 @@ def dashboard():
         session.clear()
         return redirect(url_for('index'))
     uid          = session['employee_id']
-    today_rec    = db.get_today_record(uid)
     history      = db.get_attendance_history(uid)
+    today_str    = __import__('datetime').date.today().isoformat()
+    
+    # Synchronization fix: Use history[0] if it matches today's date
+    today_rec = None
+    if history:
+        # history[0]['date'] is already formatted as ISO string by _rows_to_dicts
+        if history[0].get('date') == today_str:
+            today_rec = history[0]
+    
     meetings     = db.get_meetings_for_employee(uid)
     leave_reqs   = db.get_leave_requests_by_employee(uid)
     monthly      = db.get_monthly_stats(uid)
@@ -130,9 +138,14 @@ def dashboard():
     upcoming     = db.get_upcoming_meetings(uid)
     notifs       = db.get_notifications(uid)
     analytics    = db.get_employee_analytics(uid)
+    projects     = db.get_projects_for_employee(uid) # Existing helper if used
+    project_tasks = db.get_employee_project_tasks(uid)
+    latest       = history[0] if history else None
+
     return render_template('dashboard.html',
                            emp=emp,
                            today=today_rec,
+                           latest=latest,
                            history=history,
                            meetings=meetings,
                            leave_reqs=leave_reqs,
@@ -141,10 +154,19 @@ def dashboard():
                            upcoming=upcoming,
                            notifs=notifs,
                            analytics=analytics,
-                           today_date=__import__('datetime').date.today().isoformat(),
-                           today_str=__import__('datetime').date.today().isoformat(),
+                           projects=projects,
+                           project_tasks=project_tasks,
+                           today_date=today_str,
+                           today_str=today_str,
                            fmt_time=db.fmt_time,
                            fmt_date=db.fmt_date)
+
+
+@app.route('/meetings')
+def meetings_page():
+    if 'employee_id' not in session:
+        return redirect(url_for('index'))
+    return redirect(url_for('dashboard', tab='meetings'))
 
 
 
@@ -156,7 +178,8 @@ def admin(tab='attendance'):
         
     # Sanitize and default
     active_tab = (tab or 'attendance').strip().lower()
-    if active_tab not in ['attendance', 'employees', 'meetings', 'leaves', 'reports', 'activity', 'analytics']:
+    allowed = ['attendance', 'employees', 'meetings', 'leaves', 'reports', 'activity', 'analytics']
+    if active_tab not in allowed:
         return redirect(url_for('admin', tab='attendance'))
 
     stats       = db.get_stats()
@@ -168,10 +191,11 @@ def admin(tab='attendance'):
     leave_reqs  = db.get_all_leave_requests()
     admin_info  = db.get_employee(session.get('employee_id'))
 
-    # New Analytics Data
-    admin_analytics = db.get_admin_analytics('month') if active_tab == 'analytics' else {}
-    details = db.get_admin_detailed_stats() if active_tab == 'analytics' else {}
-    top_performers = db.get_top_performers() if active_tab == 'analytics' else []
+    # New Analytics Data (Only for Analytics tab)
+    is_analytics = (active_tab == 'analytics')
+    admin_analytics = db.get_admin_analytics('month') if is_analytics else {}
+    details = db.get_admin_detailed_stats() if is_analytics else {}
+    top_performers = db.get_top_performers() if is_analytics else []
     
     return render_template('admin_dashboard.html',
                            active_tab=active_tab,
@@ -188,6 +212,48 @@ def admin(tab='attendance'):
                            top_performers=top_performers,
                            fmt_time=db.fmt_time,
                            fmt_date=db.fmt_date)
+
+
+@app.route('/admin/projects')
+def admin_projects():
+    if session.get('role') != 'admin' and session.get('employee_id') != 'admin':
+        return redirect(url_for('index'))
+    projects = db.get_admin_project_list()
+    employees = db.get_all_employees()
+    admin_info = db.get_employee(session.get('employee_id'))
+    return render_template('admin_projects.html', 
+                           projects=projects, 
+                           employees=employees,
+                           admin_info=admin_info)
+
+@app.route('/admin/projects/create', methods=['POST'])
+def admin_project_create():
+    if session.get('role') != 'admin' and session.get('employee_id') != 'admin':
+        return redirect(url_for('index'))
+    data = {
+        'title': request.form.get('title'),
+        'members_wanted': request.form.get('members_wanted'),
+        'deadline': request.form.get('deadline'),
+        'created_by': session.get('employee_id')
+    }
+    db.create_project_assignment(data)
+    return redirect(url_for('admin_projects'))
+
+@app.route('/employee/project/respond', methods=['POST'])
+def employee_project_respond():
+    if 'employee_id' not in session:
+        return jsonify({'success': False}), 401
+    data = request.json or {}
+    project_id = data.get('project_id')
+    status = data.get('status') # interested, not_interested
+    db.update_project_interest_status(project_id, session['employee_id'], status)
+    
+    # Notify admin
+    uname = session.get('user_name', session['employee_id'])
+    if status == 'interested':
+        db.add_notification('admin', f"{uname} is interested in project")
+        
+    return jsonify({'success': True})
 
 
 # ---------------------------------------------------------------------------
@@ -318,6 +384,7 @@ def api_register():
 
         db.register_employee({
             'employee_id':    emp_id,
+            'title':          data.get('title', ''),
             'name':           name,
             'email':          data.get('email', ''),
             'role':           data.get('role', 'employee'),
@@ -396,6 +463,8 @@ def api_submit_leave():
         'to_date':     to_date,
         'reason':      reason
     })
+    # Feature 3: Send notification to Admin
+    db.add_notification('admin', f"{session.get('user_name', session['employee_id'])} requested leave")
     return jsonify({'success': True})
 
 
@@ -404,13 +473,21 @@ def api_my_leave_requests():
     if 'employee_id' not in session:
         return jsonify([])
     return jsonify(db.get_leave_requests_by_employee(session['employee_id']))
-
-
 @app.route('/api/admin/leave/<int:lid>/approve', methods=['POST'])
 def api_approve_leave(lid):
     if session.get('role') != 'admin' and session.get('employee_id') != 'admin':
         return jsonify({'success': False})
     db.update_leave_status(lid, 'Approved')
+    
+    # Feature 3: Send notification to Employee
+    conn = db.get_conn()
+    c = conn.cursor()
+    c.execute("SELECT employee_id FROM leave_requests WHERE id=?", (lid,))
+    row = c.fetchone()
+    if row:
+        db.add_notification(row[0], "Leave Approved")
+    conn.close()
+    
     return jsonify({'success': True})
 
 
@@ -419,6 +496,16 @@ def api_reject_leave(lid):
     if session.get('role') != 'admin' and session.get('employee_id') != 'admin':
         return jsonify({'success': False})
     db.update_leave_status(lid, 'Rejected')
+    
+    # Feature 3: Send notification to Employee
+    conn = db.get_conn()
+    c = conn.cursor()
+    c.execute("SELECT employee_id FROM leave_requests WHERE id=?", (lid,))
+    row = c.fetchone()
+    if row:
+        db.add_notification(row[0], "Leave Rejected")
+    conn.close()
+    
     return jsonify({'success': True})
 # ── Admin Operations ────────────────────────────────────────────────────────
 @app.route('/api/admin/meeting', methods=['POST'])
@@ -437,6 +524,11 @@ def api_create_meeting():
         'employee_id': emp_id if emp_id else None,
         'created_by':  session.get('employee_id')
     })
+    
+    # Send notification to assigned employee
+    if emp_id:
+        db.add_notification(emp_id, f"New meeting scheduled: {data['title']}")
+        
     return jsonify({'success': True})
 
 @app.route('/api/admin/meeting/<int:mid>', methods=['DELETE'])
@@ -478,6 +570,38 @@ def api_add_employee():
         return jsonify({'success': False, 'message': str(e)})
 
 
+@app.route('/api/meeting/respond', methods=['POST'])
+def api_meeting_respond():
+    if 'employee_id' not in session:
+        return jsonify({'success': False, 'message': 'Not logged in'}), 401
+    data = request.json or {}
+    mid = data.get('meeting_id')
+    status = data.get('status')
+    reason = data.get('reason')
+    
+    if not mid or not status:
+        return jsonify({'success': False, 'message': 'Meeting ID and status required.'})
+        
+    db.save_meeting_response(mid, session['employee_id'], status, reason)
+    
+    # Feature 2: Admin Notification
+    uname = session.get('user_name', session['employee_id'])
+    msg = f"{uname} {status} meeting"
+    if status == 'declined' and reason:
+        msg = f"{uname} declined meeting - Reason: {reason}"
+    elif status == 'tentative':
+        msg = f"{uname} marked tentative"
+    elif status == 'accepted':
+        msg = f"{uname} accepted meeting"
+        
+    db.add_notification('admin', msg)
+    
+    return jsonify({'success': True})
+
+# --- End of custom routes ---
+
+# --- Stale routes removed ---
+
 # ---------------------------------------------------------------------------
 # Routes — Flutter Helpers (Read-Only)
 # ---------------------------------------------------------------------------
@@ -495,6 +619,10 @@ def api_dashboard_data():
     if emp.get('face_image'):
         face_image = base64.b64encode(emp['face_image']).decode('utf-8')
 
+    # Fetch history for synchronization
+    history = db.get_attendance_history(uid)
+    today_str = __import__('datetime').date.today().isoformat()
+    
     data = {
         'success':    True,
         'employee':   {
@@ -505,15 +633,13 @@ def api_dashboard_data():
             'created_at':  emp.get('created_at').isoformat() if emp.get('created_at') else None,
             'face_image':  face_image
         },
-        'today':      db.get_today_record(uid),
-        'history':    db.get_attendance_history(uid),
-        'meetings':   db.get_meetings_for_employee(uid),
-        'leave_reqs': db.get_leave_requests_by_employee(uid),
-        'monthly':    db.get_monthly_stats(uid),
+        'today':      history[0] if (history and history[0].get('date') == today_str) else None,
+        'history':    history,
         'leave_bal':  db.get_leave_balance(uid),
         'upcoming':   db.get_upcoming_meetings(uid),
         'notifications': db.get_notifications(uid)
     }
+    
     return jsonify(data)
 
 

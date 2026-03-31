@@ -13,6 +13,7 @@
     checked_in: {{ 'true' if (today and not checked_out) else 'false' }},
     status: "{{ today_status or 'absent' }}",
     check_in_time: "{{ fmt_time(today_checkin) if today_checkin else '' }}",
+    check_out_time: "{{ fmt_time(today_checkout) if today_checkout else '' }}",
     working_hours: {{ today_hours or 0 }}
   };
 </script>
@@ -59,7 +60,7 @@
         {{ emp.name[0]|upper }}
       </div>
     </div>
-    <div class="profile-name">{{ emp.name }}</div>
+    <div class="profile-name">{{ emp.title }} {{ emp.name }}</div>
     <div class="profile-id">{{ emp.employee_id }}</div>
 
     <div id="sidebar-status" style="margin-top:4px;font-size:0.75rem;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px">
@@ -90,6 +91,9 @@
     <a class="nav-item" onclick="showSection('analytics',this)">
       <span class="nav-icon"><i data-lucide="bar-chart-2" style="width:16px;height:16px"></i></span> Analytics
     </a>
+    <a class="nav-item" onclick="showSection('project-work',this)">
+      <span class="nav-icon"><i data-lucide="briefcase" style="width:16px;height:16px"></i></span> Project Work
+    </a>
     <a class="nav-item" onclick="showSection('profile-sec',this)">
       <span class="nav-icon"><i data-lucide="user" style="width:16px;height:16px"></i></span> My Profile
     </a>
@@ -110,7 +114,7 @@
 
     <!-- LEFT: Greeting -->
     <div>
-      <div class="topbar-title">Good day, <strong>{{ emp.name.split(' ')[0] }}</strong></div>
+      <div class="topbar-title">Good day, <strong>{% if emp.title and emp.title|lower != 'none' %}{{ emp.title }} {% endif %}{{ emp.name.split(' ')[0] }}</strong></div>
     </div>
 
     <!-- CENTER: Live date & time -->
@@ -154,7 +158,7 @@
 
     <!-- §1 TODAY SUMMARY BANNER -->
     <div class="dash-card" style="margin-bottom:20px;border-left:3px solid var(--accent)">
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px;align-items:center">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:16px;align-items:center">
         <div>
           <div class="stat-label">Today Status</div>
           <span id="today-status-pill" class="pill pill-{{ today_status or 'absent' }}" style="margin-top:6px;display:inline-block">
@@ -162,8 +166,12 @@
           </span>
         </div>
         <div>
-          <div class="stat-label">Check-In Time</div>
-          <div id="checkin-time-val" class="stat-val" style="font-size:1rem;margin-top:4px">{{ fmt_time(today_checkin) }}</div>
+          <div class="stat-label">CLOCKED IN</div>
+          <div id="checkin-time-val" class="stat-val" style="font-size:1rem;margin-top:4px">{{ fmt_time(latest.check_in) if latest and latest.check_in else '--:--' }}</div>
+        </div>
+        <div>
+          <div class="stat-label">CLOCKED OUT</div>
+          <div id="checkout-time-val" class="stat-val" style="font-size:1rem;margin-top:4px">{{ fmt_time(latest.check_out) if latest and latest.check_out else '--:--' }}</div>
         </div>
         <div>
           <div class="stat-label">Working Hours</div>
@@ -259,7 +267,7 @@
       </div>
 
       <!-- Upcoming Meetings -->
-      <div class="dash-card">
+      <div class="dash-card" onclick="window.location.href='/dashboard?tab=meetings'" style="cursor:pointer">
         <div class="card-header">
           <span class="card-title"><i data-lucide="calendar" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Upcoming Meetings</span>
           <span class="card-sub">{{ upcoming|length }} upcoming</span>
@@ -320,12 +328,32 @@
           {% for n in notifs %}
           <div style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border)">
             <span style="flex-shrink:0;opacity:0.8"><i data-lucide="{{ n.icon }}" style="width:16px;height:16px"></i></span>
-            <span style="font-size:.83rem;
-              color:{% if n.type=='success' %}var(--success){% elif n.type=='danger' %}var(--danger){% elif n.type=='warn' %}var(--warn){% elif n.type=='info' %}var(--accent){% else %}var(--muted){% endif %}">
+            <span style="font-size:.83rem; cursor:pointer;" onclick="handleNotificationClick('{{ n.text }}')">
               {{ n.text }}
             </span>
           </div>
           {% endfor %}
+          
+          {% if project_tasks %}
+            {% for pt in project_tasks %}
+            <div id="project-task-{{ pt.project_id }}" style="padding:12px 0; border-bottom:1px solid var(--border)">
+              <div style="font-size:0.83rem; margin-bottom:4px"><strong>New Project Assigned:</strong> {{ pt.title }}</div>
+              <div style="font-size:0.7rem; color:var(--muted); margin-bottom:8px">
+                Members Needed: {{ pt.members_wanted }} &bull; Deadline: {{ pt.deadline }}
+              </div>
+              <div style="display:flex; gap:8px">
+                {% if pt.status == 'pending' %}
+                <button onclick="respondProject({{ pt.project_id }}, 'interested', this)" class="btn btn-success btn-xs" style="font-size:0.7rem; padding:4px 12px">Interested</button>
+                <button onclick="respondProject({{ pt.project_id }}, 'not_interested', this)" class="btn btn-danger btn-xs" style="font-size:0.7rem; padding:4px 12px">Not Interested</button>
+                {% else %}
+                <span class="badge badge-{{ 'success' if pt.status == 'interested' else 'danger' }}" style="font-size:0.65rem">
+                  {{ pt.status | replace('_', ' ') | title }}
+                </span>
+                {% endif %}
+              </div>
+            </div>
+            {% endfor %}
+          {% endif %}
         {% else %}
           <div class="empty-state">No new notifications</div>
         {% endif %}
@@ -400,11 +428,24 @@
             <div class="meet-card-time"><i data-lucide="clock" style="width:12px;height:12px;vertical-align:middle;margin-right:4px"></i>{{ m.meeting_time }}</div>
             <div class="meet-card-title">{{ m.title }}</div>
             {% if m.description %}<div class="meet-card-desc">{{ m.description }}</div>{% endif %}
-            <div class="meet-card-who">
+            <div class="meet-card-who" style="margin-bottom:12px">
               {% if m.employee_id and m.employee_id == emp.employee_id %}
                 <i data-lucide="user" style="width:12px;height:12px;vertical-align:middle;margin-right:4px"></i>Assigned to you
               {% else %}
                 <i data-lucide="users" style="width:12px;height:12px;vertical-align:middle;margin-right:4px"></i>All employees
+              {% endif %}
+            </div>
+
+            <div class="meet-actions" style="display:flex;gap:8px;border-top:1px solid var(--border);padding-top:12px">
+              {% if m.response_status %}
+                <span class="badge badge-{{ m.response_status | lower }}" style="padding:6px 12px;font-size:0.75rem">
+                   {{ m.response_status | capitalize }}
+                   {% if m.response_reason %}<div style="font-size:0.65rem;opacity:0.8;margin-top:2px">{{ m.response_reason }}</div>{% endif %}
+                </span>
+              {% else %}
+                <button onclick="respondMeeting({{ m.id }}, 'accepted')" class="btn btn-success btn-sm" style="flex:1;font-size:0.7rem;padding:6px">Accept</button>
+                <button onclick="respondMeeting({{ m.id }}, 'tentative')" class="btn btn-warning btn-sm" style="flex:1;font-size:0.7rem;padding:6px;background:var(--warn);color:#000">Tentative</button>
+                <button onclick="openDeclineModal({{ m.id }})" class="btn btn-danger btn-sm" style="flex:1;font-size:0.7rem;padding:6px">Decline</button>
               {% endif %}
             </div>
           </div>
@@ -430,7 +471,7 @@
                alt="Profile">
           <div class="profile-initials-lg" style="display:none">{{ emp.name[0]|upper }}</div>
         </div>
-        <div style="font-size:1.2rem;font-weight:700;margin-bottom:6px">{{ emp.name }}</div>
+        <div style="font-size:1.2rem;font-weight:700;margin-bottom:6px">{{ emp.title }} {{ emp.name }}</div>
         <div style="margin-top:12px">
           <span class="pill pill-{{ today_status }}">{{ today_status|title }}</span>
         </div>
@@ -445,7 +486,7 @@
       <div class="dash-card">
         <div class="card-title" style="margin-bottom:20px">Profile Information</div>
         <div class="info-row"><span>Employee ID</span>    <strong>{{ emp.employee_id }}</strong></div>
-        <div class="info-row"><span>Full Name</span>      <strong>{{ emp.name }}</strong></div>
+        <div class="info-row"><span>Full Name</span>      <strong>{{ emp.title }} {{ emp.name }}</strong></div>
         <div class="info-row"><span>Email</span>          <strong>{{ emp.email or '—' }}</strong></div>
         <div class="info-row"><span>Role</span>           <strong>{{ (emp.role or 'employee')|title }}</strong></div>
         <div class="info-row"><span>Member Since</span>   <strong>{{ fmt_date(emp.created_at) }}</strong></div>
@@ -590,6 +631,50 @@
     </div>
   </section>
 
+  <!-- ════════ PROJECT WORK ════════ -->
+  <section id="project-work" class="dash-section hidden">
+    <div class="dash-header" style="margin-bottom:24px">
+      <div class="dash-title-wrap">
+        <h2 class="dash-title">Project Work</h2>
+        <p class="dash-subtitle">Explore available projects and respond to assignments</p>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      {% for p in projects %}
+      <div class="dash-card" style="border-left: 4px solid {{ 'var(--primary)' if p.my_status == 'Available' else 'var(--success)' }}">
+        <div class="card-header" style="padding-bottom:10px">
+          <span class="card-title" style="font-size:1.05rem">{{ p.title }}</span>
+          <span class="pill {{ 'pill-present' if p.my_status == 'Assigned' else 'pill-late' }}">{{ p.my_status }}</span>
+        </div>
+        <div style="padding:0 24px 20px">
+          <p class="text-muted" style="font-size:0.85rem;margin-bottom:12px;line-height:1.5">{{ p.description }}</p>
+          <div style="display:flex;gap:20px;font-size:0.75rem;margin-bottom:16px;color:var(--text-dim)">
+            <span style="display:flex;align-items:center;gap:6px"><i data-lucide="users" style="width:14px;height:14px"></i> {{ p.members_req }} Required</span>
+            <span style="display:flex;align-items:center;gap:6px"><i data-lucide="calendar" style="width:14px;height:14px"></i> Deadline: {{ p.deadline }}</span>
+          </div>
+          
+          {% if p.my_status == 'Available' %}
+          <div style="display:flex;gap:10px">
+            <button onclick="respondProject({{ p.id }}, 'Interested')" class="btn btn-primary btn-sm" style="flex:1">Interested</button>
+            <button onclick="respondProject({{ p.id }}, 'Not Interested')" class="btn btn-ghost btn-sm" style="flex:1">Not Interested</button>
+          </div>
+          {% else %}
+          <div style="background:rgba(16,185,129,0.1);color:var(--success);padding:10px;border-radius:8px;font-weight:600;font-size:0.8rem;text-align:center">
+            <i data-lucide="check-circle" style="width:14px;height:14px;vertical-align:middle;margin-right:6px"></i> You are assigned to this project
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% else %}
+      <div class="dash-card" style="grid-column: span 2; text-align:center; padding:60px; color:var(--text-dim)">
+        <i data-lucide="briefcase" style="width:40px;height:40px;margin-bottom:16px;opacity:0.5"></i>
+        <p>No new projects available at the moment.</p>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
   <!-- Analytics Script -->
   <script>
     document.addEventListener('DOMContentLoaded', function() {
@@ -657,7 +742,50 @@
   </div>
 </div>
 
+<!-- Meeting Decline Modal -->
+<div id="decline-modal" class="modal-overlay hidden">
+  <div class="modal" style="max-width:400px">
+    <h3>Reason for declining meeting</h3>
+    <div class="form-group" style="margin-top:16px">
+      <textarea id="decline-reason" class="form-control" rows="3" placeholder="Enter reason here..."></textarea>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:16px">
+      <button onclick="document.getElementById('decline-modal').classList.add('hidden')" class="btn btn-ghost" style="flex:1">Cancel</button>
+      <button onclick="submitDecline()" class="btn btn-primary" style="flex:1">Submit</button>
+    </div>
+  </div>
+</div>
+
 <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+<script>
+  // Handle tab switching from URL parameter on load
+  document.addEventListener('DOMContentLoaded', () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const tab = urlParams.get('tab');
+    if (tab) {
+      const navItem = document.querySelector(`.nav-item[onclick*='${tab}']`);
+      if (typeof showSection === 'function') {
+        showSection(tab, navItem);
+      }
+    }
+  });
+
+  async function respondProject(pid, status, btn) {
+    const container = btn.parentElement;
+    const resp = await fetch('/employee/project/respond', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: pid, status: status })
+    });
+    const res = await resp.json();
+    if(res.success) {
+      // Disable buttons and show badge
+      container.innerHTML = `<span class="badge badge-${status==='interested'?'success':'danger'}" style="font-size:0.65rem">${status === 'interested' ? 'Interested' : 'Not Interested'}</span>`;
+    } else {
+      alert("Error submitting response");
+    }
+  }
+</script>
 
 </body>
 </html>

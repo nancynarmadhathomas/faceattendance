@@ -39,6 +39,9 @@
       <a href="/admin/analytics" class="nav-btn {{ 'active' if active_tab == 'analytics' else '' }}">
         <i data-lucide="bar-chart-2"></i><span>Analytics</span>
       </a>
+      <a class="nav-btn {{ 'active' if active_tab == 'projects' else '' }}" href="/admin/projects">
+        <i data-lucide="bar-chart-2"></i><span>Project Assign</span>
+      </a>
       
       <div style="margin-top:auto;padding-top:24px;border-top:1px solid var(--border)">
         <a href="/logout" class="nav-btn" style="color:var(--danger)">
@@ -52,7 +55,7 @@
     <!-- Top Header -->
     <header class="premium-header">
       <div class="header-welcome">
-        <h1>Hi {{ admin_info.name.split(' ')[0] if admin_info else 'Nancy' }},</h1>
+        <h1>Hi {{ admin_info.title if admin_info else '' }} {{ admin_info.name.split(' ')[0] if admin_info else 'Admin' }},</h1>
         <p>Welcome back to <strong>FaceAttend</strong> Command Center</p>
       </div>
       
@@ -76,14 +79,14 @@
           </div>
           <div id="notif-menu" class="dropdown-menu">
             <div style="padding:12px;font-weight:700;border-bottom:1px solid var(--border);margin-bottom:8px">Notifications</div>
-            {% for lr in leave_reqs if lr.status == 'Pending' %}
-            <a href="/admin/leaves" class="dropdown-item">
-              <i data-lucide="file-text" style="color:var(--warning)"></i>
+            {% for n in notifs %}
+            <div class="dropdown-item">
+              <i data-lucide="bell" style="color:var(--primary-light)"></i>
               <div>
-                <div style="font-weight:600;font-size:0.85rem">{{ lr.employee_name or lr.employee_id }}</div>
-                <div style="font-size:0.75rem;color:var(--text-dim)">New leave request: {{ lr.leave_type }}</div>
+                <div style="font-size:0.8rem;color:var(--text)">{{ n.message }}</div>
+                <div style="font-size:0.65rem;color:var(--text-dim)">{{ n.created_at }}</div>
               </div>
-            </a>
+            </div>
             {% else %}
             <div style="padding:20px;text-align:center;color:var(--text-dim);font-size:0.85rem">No new notifications</div>
             {% endfor %}
@@ -117,80 +120,79 @@
     </header>
 
     {% set current_tab = active_tab or 'attendance' %}
-    
     {% if current_tab == 'attendance' %}
       <div class="dashboard-content">
         <!-- ROW 1: TOP KPI CARDS -->
-        <div class="metrics-grid" style="margin-bottom:24px">
-          <div class="metric-card">
-            <div class="metric-icon" style="background:rgba(99,102,241,0.1);color:var(--primary-light)"><i data-lucide="users"></i></div>
-            <div class="metric-value">{{ stats.total }}</div>
-            <div class="metric-label">Total Employees</div>
+        </div>
+
+        <div class="activity-grid" style="grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+          <!-- Upcoming Meetings Card (Clickable) -->
+          <div class="metric-card card-clickable" onclick="location.href='/admin/meetings'" style="cursor:pointer; border: 1px solid var(--primary-dim)">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px">
+              <h3 style="font-size:1rem;font-weight:700">Upcoming Meetings</h3>
+              <i data-lucide="external-link" style="width:16px;height:16px;color:var(--primary-light)"></i>
+            </div>
+            <div class="metric-value" style="font-size:1.8rem;margin-bottom:5px">{{ meetings|length }}</div>
+            <div class="metric-label">Scheduled Events</div>
+            <div style="margin-top:15px;font-size:0.75rem;color:var(--primary-light);font-weight:600">View all meetings →</div>
           </div>
+          
           <div class="metric-card">
-            <div class="metric-icon" style="background:rgba(16,185,129,0.1);color:var(--success)"><i data-lucide="user-check"></i></div>
-            <div class="metric-value">{{ stats.present }}</div>
-            <div class="metric-label">Present Today</div>
+            <div class="metric-icon" style="background:rgba(139,92,246,0.1);color:var(--accent2)"><i data-lucide="activity"></i></div>
+            <div class="metric-value">Active</div>
+            <div class="metric-label">System Status</div>
           </div>
+
           <div class="metric-card">
-            <div class="metric-icon" style="background:rgba(239,68,68,0.1);color:var(--danger)"><i data-lucide="user-x"></i></div>
-            <div class="metric-value">{{ stats.absent }}</div>
-            <div class="metric-label">Absent Today</div>
-          </div>
-          <div class="metric-card">
-            <div class="metric-icon" style="background:rgba(139,92,246,0.1);color:var(--accent2)"><i data-lucide="umbrella"></i></div>
-            <div class="metric-value">{{ stats.on_leave }}</div>
-            <div class="metric-label">On Leave Today</div>
-          </div>
-          <div class="metric-card">
-            <div class="metric-icon" style="background:rgba(245,158,11,0.1);color:var(--warning)"><i data-lucide="clock"></i></div>
-            <div class="metric-value">{{ stats.late }}</div>
-            <div class="metric-label">Late Today</div>
+            <div class="metric-icon" style="background:rgba(245,158,11,0.1);color:var(--warning)"><i data-lucide="zap"></i></div>
+            <div class="metric-value">98%</div>
+            <div class="metric-label">Efficiency</div>
           </div>
         </div>
 
-        <!-- ROW 2: RECENT MONITORING -->
         <div class="activity-grid" style="grid-template-columns: 1.5fr 1fr; gap: 24px;">
-          <div class="metric-card">
-            <h3 style="font-size:1.1rem;font-weight:700;margin-bottom:20px">Today's Attendance</h3>
-            <div style="overflow-x:auto">
-              <table class="table">
-                <thead><tr><th>Employee</th><th>In</th><th>Out</th><th>Status</th></tr></thead>
-                <tbody>
-                  {% for a in attend %}
-                  <tr class="row-clickable" onclick="location.href='/admin/employee/{{ a.employee_id }}'">
-                    <td><strong>{{ a.name }}</strong></td>
-                    <td style="font-family:monospace">{{ a.check_in or '—' }}</td>
-                    <td style="font-family:monospace">{{ a.check_out or '—' }}</td>
-                    <td><span class="badge badge-{{ (a.status or 'Absent') | lower }}">{{ a.status or 'Absent' }}</span></td>
-                  </tr>
-                  {% else %}
-                  <tr><td colspan="4" style="text-align:center;padding:40px;color:var(--text-dim)">No activity yet.</td></tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          </div>
-          <div class="metric-card">
-            <h3 style="font-size:1.1rem;font-weight:700;margin-bottom:20px">Recent Activity</h3>
-            <div class="activity-feed">
-              {% for r in recent[:5] %}
-              <div class="feed-item">
-                <div class="feed-avatar" style="color:var(--primary)">{{ r.name[0] }}</div>
-                <div class="feed-content">
-                  <p><strong>{{ r.name }}</strong> {{ 'was late' if r.status == 'Late' else 'is here' if r.status == 'Present' else 'is missing' }}</p>
-                  <span>{{ r.check_in or 'Not arrived' }} · Today</span>
-                </div>
+           <!-- Today's Attendance Table -->
+           <div class="metric-card">
+              <h3 style="font-size:1.1rem;font-weight:700;margin-bottom:20px">Today's Attendance</h3>
+              <div style="overflow-x:auto">
+                <table class="table">
+                  <thead><tr><th>Employee</th><th>In</th><th>Out</th><th>Status</th></tr></thead>
+                  <tbody>
+                    {% for a in attend %}
+                    <tr class="row-clickable" onclick="location.href='/admin/employee/{{ a.employee_id }}'">
+                      <td><strong>{{ a.name }}</strong><div style="font-size:0.7rem;color:var(--text-dim)">{{ a.employee_id }}</div></td>
+                      <td style="font-family:monospace">{{ a.check_in or '—' }}</td>
+                      <td style="font-family:monospace">{{ a.check_out or '—' }}</td>
+                      <td><span class="badge badge-{{ a.status | lower if a.status else 'absent' }}">{{ a.status or 'Absent' }}</span></td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" style="text-align:center;padding:40px;color:var(--text-dim)">No activity yet.</td></tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
               </div>
-              {% endfor %}
-            </div>
-          </div>
+           </div>
+
+           <!-- Recent Activity Feed -->
+           <div class="metric-card">
+              <h3 style="font-size:1.1rem;font-weight:700;margin-bottom:20px">Recent Activity</h3>
+              <div class="activity-feed">
+                {% for r in recent[:6] %}
+                <div class="feed-item row-clickable" onclick="location.href='/admin/employee/{{ r.employee_id }}'">
+                  <div class="feed-avatar">{{ r.name[0] }}</div>
+                  <div class="feed-content">
+                    <p><strong>{{ r.name }}</strong> {{ r.status }} at {{ r.check_in }}</p>
+                    <span>Today • Face Recognition</span>
+                  </div>
+                </div>
+                {% endfor %}
+              </div>
+           </div>
         </div>
       </div>
-
     {% elif current_tab == 'analytics' %}
       <div class="dashboard-content">
-        <!-- ROW 1: TOTAL ATTENDANCE TREND (LINE) -->
+        <!-- ROW 1: ANALYTICS Trend -->
         <div class="metric-card" style="margin-bottom:24px; padding: 24px;">
           <div class="flex-between mb-4">
             <h3 style="font-size:1.1rem;font-weight:700">Total Attendance Trend</h3>
@@ -230,40 +232,22 @@
           </div>
           <div style="overflow-x:auto">
             <table class="table">
-              <thead>
-                <tr>
-                  <th>Employee Name</th>
-                  <th>ID</th>
-                  <th>Attendance %</th>
-                  <th>Late Count</th>
-                  <th>Leaves</th>
-                </tr>
-              </thead>
+              <thead><tr><th>Employee</th><th>ID</th><th>Attendance %</th><th>Late</th><th>Leaves</th></tr></thead>
               <tbody>
                 {% for p in top_performers %}
                 <tr>
                   <td><strong>{{ p.name }}</strong></td>
-                  <td><code style="font-size: 0.75rem;">{{ p.id }}</code></td>
-                  <td>
-                    <div style="display:flex;align-items:center;gap:10px">
-                      <span style="min-width: 40px;">{{ p.pct }}%</span>
-                      <div style="flex:1;height:6px;background:var(--surface2);border-radius:10px;overflow:hidden;max-width:80px">
-                        <div style="width:{{ p.pct }}%;height:100%;background:var(--success)"></div>
-                      </div>
-                    </div>
-                  </td>
-                  <td><span class="badge badge-{{ 'late' if p.late > 2 else 'present' }}">{{ p.late }}</span></td>
+                  <td><code>{{ p.id }}</code></td>
+                  <td>{{ p.pct }}%</td>
+                  <td>{{ p.late }}</td>
                   <td>{{ p.leaves }}</td>
                 </tr>
-                {% else %}
-                <tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-dim)">No data available for top performers.</td></tr>
                 {% endfor %}
               </tbody>
             </table>
           </div>
         </div>
       </div>
-
     {% else %}
       <div class="dashboard-content">
         {% if current_tab == 'employees' %}
@@ -283,9 +267,7 @@
                   <td>{{ e.employee_id }}</td><td><strong>{{ e.name }}</strong></td><td>{{ e.email or '—' }}</td>
                   <td>
                     <div style="display:flex;gap:8px">
-                      <button onclick="showEmployeeModal(); event.stopPropagation();" class="btn btn-success btn-sm" style="display:flex;align-items:center;gap:4px">
-                        <i data-lucide="plus" style="width:14px;height:14px"></i> Add
-                      </button>
+                      <button onclick="showEmployeeModal(); event.stopPropagation();" class="btn btn-success btn-sm"><i data-lucide="user-plus" style="width:14px;height:14px;margin-right:4px"></i>Add</button>
                       <button onclick="deleteEmployee('{{ e.employee_id }}'); event.stopPropagation();" class="btn btn-danger btn-sm">Delete</button>
                     </div>
                   </td>
@@ -344,6 +326,7 @@
              <p class="text-muted">Extensive {{ current_tab }} monitoring and exports are coming soon.</p>
              <button onclick="location.href='/admin/attendance'" class="btn btn-primary mt-6">Return to Overview</button>
            </div>
+            </div>
         {% endif %}
       </div>
     {% endif %}
@@ -387,6 +370,7 @@
     </div>
   </div>
 </div>
+
 
 <!-- Scripts -->
 <script>

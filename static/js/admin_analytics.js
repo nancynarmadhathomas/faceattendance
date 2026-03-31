@@ -1,18 +1,11 @@
 // Admin Dashboard Analytics - Powered by ApexCharts
 document.addEventListener('DOMContentLoaded', function() {
-    // Only run if we are on a page/tab that contains the charts
-    const chartContainer = document.querySelector("#chart-org-trend");
-    if (!chartContainer || !window.ADMIN_DATA) {
+    if (!window.ADMIN_DATA || !window.ADMIN_DATA.details || !window.ADMIN_DATA.details.weekly_att) {
+        console.warn("Admin analytics data missing or incomplete.");
         return;
     }
     
     const { trend, details } = window.ADMIN_DATA;
-
-    // Safety check for empty data
-    if (!trend || !trend.labels || trend.labels.length === 0) {
-        console.warn("No analytics data available to render charts.");
-        return;
-    }
 
     const commonOptions = {
         chart: { 
@@ -27,7 +20,7 @@ document.addEventListener('DOMContentLoaded', function() {
     };
 
     // 1. Total Attendance Trend (Line)
-    if (document.querySelector("#chart-org-trend")) {
+    if (document.querySelector("#chart-org-trend") && trend.labels) {
         new ApexCharts(document.querySelector("#chart-org-trend"), {
             ...commonOptions,
             series: [

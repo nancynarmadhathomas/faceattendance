@@ -18,6 +18,7 @@ def get_conn():
 def init_db():
     conn = get_conn()
     c = conn.cursor()
+    
     tables = [
         """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='users' and xtype='U')
            CREATE TABLE users (
@@ -70,6 +71,41 @@ def init_db():
                employee_id VARCHAR(50) NOT NULL,
                login_time DATETIME DEFAULT GETDATE(),
                date DATE DEFAULT CAST(GETDATE() AS DATE)
+           )""",
+        """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='notifications' and xtype='U')
+           CREATE TABLE notifications (
+               id INT IDENTITY(1,1) PRIMARY KEY,
+               employee_id VARCHAR(50) NOT NULL,
+               message NVARCHAR(MAX) NOT NULL,
+               is_read BIT DEFAULT 0,
+               created_at DATETIME DEFAULT GETDATE()
+           )""",
+        """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='meeting_responses' and xtype='U')
+           CREATE TABLE meeting_responses (
+               id INT IDENTITY(1,1) PRIMARY KEY,
+               meeting_id INT NOT NULL,
+               employee_id VARCHAR(50) NOT NULL,
+               status VARCHAR(20) NOT NULL,
+               reason NVARCHAR(MAX),
+               created_at DATETIME DEFAULT GETDATE()
+           )""",
+        # NEW PROJECT TABLES
+        """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='projects' and xtype='U')
+           CREATE TABLE projects (
+               id INT IDENTITY(1,1) PRIMARY KEY,
+               title NVARCHAR(255) NOT NULL,
+               members_wanted INT DEFAULT 1,
+               deadline DATE,
+               created_by VARCHAR(50),
+               created_at DATETIME DEFAULT GETDATE()
+           )""",
+        """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='project_interest' and xtype='U')
+           CREATE TABLE project_interest (
+               id INT IDENTITY(1,1) PRIMARY KEY,
+               project_id INT NOT NULL,
+               employee_id VARCHAR(50) NOT NULL,
+               status VARCHAR(20) DEFAULT 'pending', -- pending, interested, not_interested
+               created_at DATETIME DEFAULT GETDATE()
            )"""
     ]
     for stmt in tables:
@@ -86,6 +122,49 @@ def init_db():
         c.execute("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('meetings') AND name = 'employee_id') ALTER TABLE meetings ADD employee_id VARCHAR(50)")
     except Exception:
         pass
+
+    # Ensure users table has title column
+    try:
+        c.execute("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('users') AND name = 'title') ALTER TABLE users ADD title NVARCHAR(20) DEFAULT ''")
+    except Exception:
+        pass
+
+    for col in [
+        ('employee_id', 'VARCHAR(50)'),
+        ('recipient_id', 'VARCHAR(50)'),
+        ('message', 'NVARCHAR(MAX) NOT NULL DEFAULT \'\''),
+        ('type', 'VARCHAR(20) DEFAULT \'info\''),
+        ('project_id', 'INT'),
+        ('is_read', 'BIT DEFAULT 0'),
+        ('created_at', 'DATETIME DEFAULT GETDATE()')
+    ]:
+        try:
+            # We add as nullable first to avoid issues with existing data
+            c.execute(f"IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('notifications') AND name = '{col[0]}') ALTER TABLE notifications ADD {col[0]} {col[1]}")
+        except Exception: pass
+
+    # Ensure meeting_responses table has all columns
+    for col in [
+        ('meeting_id', 'INT NOT NULL DEFAULT 0'),
+        ('employee_id', 'VARCHAR(50) NOT NULL DEFAULT \'\''),
+        ('status', 'VARCHAR(20) NOT NULL DEFAULT \'\''),
+        ('reason', 'NVARCHAR(MAX)'),
+        ('created_at', 'DATETIME DEFAULT GETDATE()')
+    ]:
+        try:
+            c.execute(f"IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('meeting_responses') AND name = '{col[0]}') ALTER TABLE meeting_responses ADD {col[0]} {col[1]}")
+        except Exception: pass
+
+    # Ensure projects table migration (Safe check)
+    for col in [
+        ('members_wanted', 'INT DEFAULT 1'),
+        ('deadline', 'DATE'),
+        ('created_by', 'VARCHAR(50)'),
+        ('created_at', 'DATETIME DEFAULT GETDATE()')
+    ]:
+        try:
+            c.execute(f"IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('projects') AND name = '{col[0]}') ALTER TABLE projects ADD {col[0]} {col[1]}")
+        except Exception: pass
 
     c.execute("SELECT id FROM users WHERE employee_id='admin'")
     if not c.fetchone():
@@ -144,7 +223,7 @@ def fmt_date(val):
 def get_all_employees():
     conn = get_conn()
     c = conn.cursor()
-    c.execute("SELECT employee_id, name, email, role, created_at FROM users ORDER BY name")
+    c.execute("SELECT employee_id, name, email, role, title, created_at FROM users ORDER BY name")
     rows = _rows_to_dicts(c, c.fetchall())
     conn.close()
     return rows
@@ -161,10 +240,10 @@ def register_employee(data):
     conn = get_conn()
     c = conn.cursor()
     c.execute("""
-        INSERT INTO users (employee_id, name, email, role, password, face_embedding, face_image)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO users (employee_id, name, email, role, title, password, face_embedding, face_image)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """, (data['employee_id'], data['name'], data['email'],
-          data.get('role', 'employee'), data['password'],
+          data.get('role', 'employee'), data.get('title', ''), data['password'],
           data['face_embedding'], data['face_image']))
     conn.commit()
     conn.close()
@@ -197,8 +276,9 @@ def log_login_event(employee_id):
 def get_today_record(employee_id):
     conn = get_conn()
     c = conn.cursor()
-    today = date.today().isoformat()
-    c.execute("SELECT * FROM attendance WHERE employee_id=? AND date=?", (employee_id, today))
+    c.execute("""SELECT TOP 1 * FROM attendance 
+                 WHERE employee_id=? AND date = CAST(GETDATE() AS DATE)
+                 ORDER BY id DESC""", (employee_id,))
     row = _row_to_dict(c, c.fetchone())
     conn.close()
     return row
@@ -206,22 +286,20 @@ def get_today_record(employee_id):
 def log_checkin(employee_id, status='Present', late_reason=None):
     conn = get_conn()
     c = conn.cursor()
-    today = date.today().isoformat()
     now = datetime.now()
-    c.execute("SELECT id FROM attendance WHERE employee_id=? AND date=?", (employee_id, today))
+    c.execute("SELECT id FROM attendance WHERE employee_id=? AND date = CAST(GETDATE() AS DATE)", (employee_id,))
     if not c.fetchone():
         c.execute("""INSERT INTO attendance (employee_id, date, check_in, status, late_reason)
-                     VALUES (?, ?, ?, ?, ?)""", (employee_id, today, now, status, late_reason))
+                     VALUES (?, CAST(GETDATE() AS DATE), ?, ?, ?)""", (employee_id, now, status, late_reason))
     conn.commit()
     conn.close()
 
 def log_checkout(employee_id):
     conn = get_conn()
     c = conn.cursor()
-    today = date.today().isoformat()
     now_dt = datetime.now()
-    c.execute("SELECT id, check_in FROM attendance WHERE employee_id=? AND date=? AND check_out IS NULL",
-              (employee_id, today))
+    c.execute("SELECT TOP 1 id, check_in FROM attendance WHERE employee_id=? AND date = CAST(GETDATE() AS DATE) AND check_out IS NULL ORDER BY id DESC",
+              (employee_id,))
     row = c.fetchone()
     if row:
         row_id = row[0]
@@ -247,9 +325,8 @@ def log_checkout(employee_id):
 def update_late_reason(employee_id, reason):
     conn = get_conn()
     c = conn.cursor()
-    today = date.today().isoformat()
-    c.execute("UPDATE attendance SET late_reason=? WHERE employee_id=? AND date=?",
-              (reason, employee_id, today))
+    c.execute("UPDATE attendance SET late_reason=? WHERE employee_id=? AND date = CAST(GETDATE() AS DATE)",
+              (reason, employee_id))
     conn.commit()
     conn.close()
 
@@ -264,14 +341,13 @@ def get_attendance_history(employee_id, limit=30):
 def get_today_attendance():
     conn = get_conn()
     c = conn.cursor()
-    today = date.today().isoformat()
     c.execute("""
         SELECT u.employee_id, u.name,
                a.check_in, a.check_out, a.status, a.working_hours
         FROM users u
-        LEFT JOIN attendance a ON u.employee_id = a.employee_id AND a.date=?
+        LEFT JOIN attendance a ON u.employee_id = a.employee_id AND a.date = CAST(GETDATE() AS DATE)
         ORDER BY u.name
-    """, (today,))
+    """)
     rows = _rows_to_dicts(c, c.fetchall())
     conn.close()
     return rows
@@ -293,23 +369,22 @@ def get_recent_attendance(limit=10):
 def get_stats():
     conn = get_conn()
     c = conn.cursor()
-    today = date.today().isoformat()
     
     # 1. Counts
     c.execute("SELECT COUNT(*) FROM users")
     total = c.fetchone()[0] or 0
-    c.execute("SELECT COUNT(*) FROM attendance WHERE date=?", (today,))
+    c.execute("SELECT COUNT(*) FROM attendance WHERE date = CAST(GETDATE() AS DATE)")
     present = c.fetchone()[0] or 0
-    c.execute("SELECT COUNT(*) FROM attendance WHERE date=? AND status='Late'", (today,))
+    c.execute("SELECT COUNT(*) FROM attendance WHERE date = CAST(GETDATE() AS DATE) AND status='Late'")
     late = c.fetchone()[0] or 0
     
     # 2. On Leave Today
     c.execute("""SELECT COUNT(*) FROM leave_requests 
-                 WHERE status='Approved' AND ? BETWEEN from_date AND to_date""", (today,))
+                 WHERE status='Approved' AND CAST(GETDATE() AS DATE) BETWEEN from_date AND to_date""")
     on_leave = c.fetchone()[0] or 0
     
     # 3. Avg Working Hours Today
-    c.execute("SELECT AVG(working_hours) FROM attendance WHERE date=?", (today,))
+    c.execute("SELECT AVG(working_hours) FROM attendance WHERE date = CAST(GETDATE() AS DATE)")
     avg_hours = c.fetchone()[0] or 0.0
     
     # 4. Computed Stats
@@ -350,8 +425,29 @@ def get_meetings_for_employee(employee_id):
                  AND (employee_id IS NULL OR LOWER(employee_id) = LOWER(?))
                  ORDER BY meeting_date, meeting_time""", (today, employee_id))
     rows = _rows_to_dicts(c, c.fetchall())
+    
+    # Also fetch the response status for each meeting
+    for r in rows:
+        c.execute("SELECT status, reason FROM meeting_responses WHERE meeting_id=? AND employee_id=?", (r['id'], employee_id))
+        res = c.fetchone()
+        if res:
+            r['response_status'] = res[0]
+            r['response_reason'] = res[1]
+        else:
+            r['response_status'] = None
+
     conn.close()
     return rows
+
+def save_meeting_response(meeting_id, employee_id, status, reason=None):
+    conn = get_conn()
+    c = conn.cursor()
+    # Remove existing response if any
+    c.execute("DELETE FROM meeting_responses WHERE meeting_id=? AND employee_id=?", (meeting_id, employee_id))
+    c.execute("""INSERT INTO meeting_responses (meeting_id, employee_id, status, reason)
+                 VALUES (?, ?, ?, ?)""", (meeting_id, employee_id, status, reason))
+    conn.commit()
+    conn.close()
 
 def get_all_meetings():
     conn = get_conn()
@@ -455,9 +551,66 @@ def get_upcoming_meetings(employee_id):
     return rows
 
 def get_notifications(employee_id):
-    notes = []
-    # ... notifications logic (omitted for brevity in this scratch, but I'll preserve it)
+    conn = get_conn()
+    c = conn.cursor()
+    # Fetch Notifications from the new table
+    c.execute("SELECT TOP 10 * FROM notifications WHERE employee_id=? ORDER BY created_at DESC", (employee_id,))
+    notes = _rows_to_dicts(c, c.fetchall())
+    
+    # Optional: include Pending Leave requests for Admin as notifications
+    if employee_id == 'admin':
+        c.execute("""SELECT lr.id, lr.employee_id, u.name, lr.leave_type, lr.created_at
+                     FROM leave_requests lr
+                     JOIN users u ON lr.employee_id = u.employee_id
+                     WHERE lr.status='Pending'
+                     ORDER BY lr.created_at DESC""")
+        pending = c.fetchall()
+        for p in pending:
+            notes.append({
+                'id': f"leave-{p[0]}",
+                'type': 'leave_request',
+                'employee_id': p[1],
+                'name': p[2],
+                'message': f"{p[2]} requested leave ({p[3]})",
+                'created_at': p[4].isoformat() if hasattr(p[4], 'isoformat') else str(p[4])
+            })
+    conn.close()
     return notes
+
+def add_notification(recipient_id, message, type='info', project_id=None):
+    conn = get_conn()
+    c = conn.cursor()
+    # Support both column names for maximum compatibility
+    try:
+        c.execute("INSERT INTO notifications (employee_id, recipient_id, message, type, project_id) VALUES (?, ?, ?, ?, ?)", 
+                  (recipient_id, recipient_id, message, type, project_id))
+    except Exception:
+        # Fallback if specific columns are missing
+        try:
+            c.execute("INSERT INTO notifications (employee_id, message, type, project_id) VALUES (?, ?, ?, ?)", 
+                      (recipient_id, message, type, project_id))
+        except Exception:
+            c.execute("INSERT INTO notifications (recipient_id, message) VALUES (?, ?)", (recipient_id, message))
+    conn.commit()
+    conn.close()
+
+def get_project_details(project_id, employee_id):
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("""
+        SELECT p.*, pi.status as user_status
+        FROM projects p
+        LEFT JOIN project_interest pi ON p.id = pi.project_id AND pi.employee_id = ?
+        WHERE p.id = ?
+    """, (employee_id, project_id))
+    row = c.fetchone()
+    if row:
+        columns = [column[0] for column in c.description]
+        res = dict(zip(columns, row))
+        conn.close()
+        return res
+    conn.close()
+    return None
 
 # --- Admin Analytics ---
 # --- Admin Analytics ---
@@ -647,3 +800,84 @@ def get_employee_analytics(employee_id):
         'chart_monthly_bar': {'labels': labels_bar, 'data': data_bar},
         'chart_leave_donut': leave_donut
     }
+
+# --- Projects (Strict Mode) ---
+def create_project_assignment(data):
+    conn = get_conn()
+    c = conn.cursor()
+    # Insert Project
+    c.execute("""INSERT INTO projects (title, members_wanted, deadline, created_by)
+                 OUTPUT INSERTED.id
+                 VALUES (?, ?, ?, ?)""",
+              (data['title'], data['members_wanted'], data['deadline'], data['created_by']))
+    project_id = c.fetchone()[0]
+    
+    # Get All Employees
+    c.execute("SELECT employee_id FROM users WHERE role = 'employee'")
+    employees = [row[0] for row in c.fetchall()]
+    
+    # Create Interest & Notification for ALL
+    for eid in employees:
+        c.execute("INSERT INTO project_interest (project_id, employee_id, status) VALUES (?, ?, 'pending')",
+                  (project_id, eid))
+        # Logic to add a notification in DB (using the add_notification helper)
+        # We'll just call it manually or reuse it
+    
+    conn.commit()
+    conn.close()
+    
+    # For notifications, let's call the global helper for each one to be safe
+    for eid in employees:
+        add_notification(eid, f"New Project Assigned: {data['title']}")
+
+def get_admin_project_list():
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("""
+        SELECT p.*,
+               (SELECT COUNT(*) FROM project_interest WHERE project_id = p.id AND status = 'interested') as interested_count,
+               (SELECT COUNT(*) FROM project_interest WHERE project_id = p.id AND status = 'not_interested') as not_interested_count,
+               (SELECT COUNT(*) FROM project_interest WHERE project_id = p.id AND status = 'pending') as pending_count
+        FROM projects p
+        ORDER BY p.created_at DESC
+    """)
+    rows = _rows_to_dicts(c, c.fetchall())
+    
+    # Enrich with interested employee names
+    for row in rows:
+        c.execute("""
+            SELECT u.name 
+            FROM project_interest pi
+            JOIN users u ON pi.employee_id = u.employee_id
+            WHERE pi.project_id = ? AND pi.status = 'interested'
+        """, (row['id'],))
+        row['interested_names'] = [r[0] for r in c.fetchall()]
+        
+    conn.close()
+    return rows
+
+def get_projects_for_employee(employee_id):
+    """Alias for get_employee_project_tasks to maintain compatibility with app.py calls."""
+    return get_employee_project_tasks(employee_id)
+
+def get_employee_project_tasks(employee_id):
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("""
+        SELECT pi.*, p.title, p.deadline, p.members_wanted
+        FROM project_interest pi
+        JOIN projects p ON pi.project_id = p.id
+        WHERE pi.employee_id = ?
+        ORDER BY pi.created_at DESC
+    """, (employee_id,))
+    rows = _rows_to_dicts(c, c.fetchall())
+    conn.close()
+    return rows
+
+def update_project_interest_status(project_id, employee_id, status):
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("UPDATE project_interest SET status = ? WHERE project_id = ? AND employee_id = ?",
+              (status, project_id, employee_id))
+    conn.commit()
+    conn.close()

@@ -36,37 +36,39 @@
 
   <!-- Right login panel -->
   <div class="login-right">
-    <div id="face-section">
-      <h2 style="font-size:1.5rem;font-weight:700;margin-bottom:6px">Good day! 👋</h2>
-      <p class="text-muted" style="margin-bottom:28px;font-size:.9rem">Look at the camera to sign in.</p>
+    <!-- Background only -->
+  </div>
+</div>
 
-      <div class="camera-wrap">
-        <div class="camera-ring">
-          <video id="video" autoplay muted playsinline></video>
-          <div class="scan-bar"></div>
-        </div>
-        <p class="camera-hint">"Align your face inside the circle"</p>
-      </div>
+<!-- Absolutely centered camera section -->
+<div id="face-section" class="camera-absolute-center">
+  <div style="text-align:center">
+    <h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Good day! 👋</h2>
+    <p class="text-muted" style="font-size:.9rem">Look at the camera to sign in.</p>
+  </div>
 
-      <div id="toast" class="toast toast-info mt-4" style="display:none"></div>
-
-      <!-- Register prompt shown when face not found -->
-      <div id="register-prompt" style="display:none;margin-top:16px;padding:16px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:12px;text-align:center">
-        <p style="font-size:.875rem;color:#f87171;margin-bottom:12px">😕 Your face is not registered yet.</p>
-        <a href="/register" class="btn btn-primary btn-sm" style="display:inline-flex">📝 Register Now</a>
-      </div>
-
-      <div style="margin-top:24px;text-align:center">
-        <button id="capture-btn" class="btn btn-primary btn-block">📷 Verify Face</button>
-      </div>
-
-      <div style="margin-top:16px;text-align:center">
-        <p style="font-size:.85rem;color:var(--muted)">New employee? 
-          <a href="/register" style="color:var(--primary-light);font-weight:600">Register here</a>
-        </p>
-        </p>
-      </div>
+  <div class="camera-wrap">
+    <div class="camera-ring">
+      <video id="video" autoplay muted playsinline></video>
+      <div class="scan-bar"></div>
     </div>
+    <p class="camera-hint">"Align your face inside the circle"</p>
+  </div>
+
+  <div id="toast" class="toast toast-info" style="display:none;width:100%;max-width:420px;margin-top:0"></div>
+
+  <!-- Register prompt shown when face not found -->
+  <div id="register-prompt" style="display:none;width:100%;max-width:420px;padding:16px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:12px;text-align:center">
+    <p style="font-size:.875rem;color:#f87171;margin-bottom:12px">😕 Your face is not registered yet.</p>
+    <a href="/register" class="btn btn-primary btn-sm" style="display:inline-flex">📝 Register Now</a>
+  </div>
+
+  <button id="capture-btn" class="btn btn-primary btn-block">📷 Verify Face</button>
+
+  <div style="text-align:center">
+    <p style="font-size:.85rem;color:var(--muted)">New employee? 
+      <a href="/register" style="color:var(--primary-light);font-weight:600">Register here</a>
+    </p>
   </div>
 </div>
 

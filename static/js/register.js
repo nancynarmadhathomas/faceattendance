@@ -88,6 +88,7 @@ async function submitRegister() {
 
   const payload = {
     employee_id: document.getElementById('emp_id').value.trim(),
+    title:       document.getElementById('emp_title').value,
     name:        document.getElementById('emp_name').value.trim(),
     email:       document.getElementById('emp_email').value.trim(),
     department:  '',

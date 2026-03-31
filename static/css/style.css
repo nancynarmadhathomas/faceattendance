@@ -187,7 +187,8 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 20px;
+  justify-content: center;
+  gap: 18px;
 }
 .camera-ring {
   width: 280px;
@@ -197,6 +198,10 @@ body {
   border: 3px solid var(--primary);
   box-shadow: 0 0 0 6px var(--primary-glow);
   position: relative;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   animation: ringPulse 2s ease-in-out infinite;
 }
 @keyframes ringPulse {
@@ -227,9 +232,10 @@ body {
 
 /* ── Login page layout ── */
 .login-grid {
-  min-height: 100vh;
+  height: 100vh;
   display: grid;
-  grid-template-columns: 1fr 480px;
+  grid-template-columns: 1fr 1fr;
+  background: var(--bg);
 }
 .login-left {
   background: linear-gradient(135deg, #0b0f1a 0%, #1a1550 100%);
@@ -243,10 +249,47 @@ body {
 .login-right {
   background: var(--surface);
   border-left: 1px solid var(--border);
+  height: 100vh;
+  overflow: hidden;
+}
+.camera-absolute-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  z-index: 10;
+  gap: 18px;
+  text-align: center;
+}
+.camera-wrap {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: 48px 40px;
+  align-items: center;
+  width: 100%;
+  gap: 18px;
+}
+.camera-ring {
+  width: 280px;
+  height: 280px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 3px solid var(--primary);
+  box-shadow: 0 0 0 6px var(--primary-glow);
+  position: relative;
+  margin: 0 auto;
+  display: block;
+  animation: ringPulse 2s ease-in-out infinite;
+}
+#capture-btn {
+  margin-top: 20px;
+  width: 320px;
+  max-width: 320px;
 }
 
 /* ── Status toast ── */
