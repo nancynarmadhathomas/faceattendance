@@ -114,7 +114,8 @@ def register_page():
 
 @app.route('/dashboard')
 def dashboard():
-    return _render_employee_dashboard('overview')
+    tab = request.args.get('tab', 'overview')
+    return _render_employee_dashboard(tab)
 
 @app.route('/project-work')
 def project_work_page():
@@ -169,11 +170,20 @@ def _render_employee_dashboard(tab):
                            fmt_date=db.fmt_date)
 
 
+@app.route('/attendance')
+def attendance_nav():
+    if 'employee_id' not in session: return redirect(url_for('index'))
+    return redirect(url_for('dashboard', tab='attendance'))
+
 @app.route('/meetings')
-def meetings_page():
-    if 'employee_id' not in session:
-        return redirect(url_for('index'))
+def meetings_nav():
+    if 'employee_id' not in session: return redirect(url_for('index'))
     return redirect(url_for('dashboard', tab='meetings'))
+
+@app.route('/leave-request')
+def leave_nav():
+    if 'employee_id' not in session: return redirect(url_for('index'))
+    return redirect(url_for('dashboard', tab='leave-sec'))
 
 
 
@@ -204,6 +214,13 @@ def admin(tab='attendance'):
     details = db.get_admin_detailed_stats() if is_analytics else {}
     top_performers = db.get_top_performers() if is_analytics else []
     
+    # Enrichment for attendance-only dashboard
+    if is_analytics:
+        details['live_status'] = db.get_live_status_analytics()
+        details['avg_hours_analytics'] = db.get_avg_working_hours_analytics()
+        details['frequent_late_analytics'] = db.get_frequent_late_analytics()
+        details['leave_type_analytics'] = db.get_leave_type_analytics()
+    
     return render_template('admin_dashboard.html',
                            active_tab=active_tab,
                            stats=stats,
@@ -217,6 +234,48 @@ def admin(tab='attendance'):
                            admin_analytics=admin_analytics,
                            details=details,
                            top_performers=top_performers,
+                           fmt_time=db.fmt_time,
+                           fmt_date=db.fmt_date)
+
+
+@app.route('/admin/employee-profile/<emp_id>')
+def admin_employee_profile(emp_id):
+    if session.get('role') != 'admin' and session.get('employee_id') != 'admin':
+        return redirect(url_for('index'))
+    
+    emp = db.get_employee(emp_id)
+    if not emp:
+        return redirect(url_for('admin', tab='employees'))
+        
+    admin_info = db.get_employee(session.get('employee_id'))
+    today_rec = db.get_today_record(emp_id)
+    analytics = db.get_employee_analytics(emp_id)
+    projects = db.get_employee_project_tasks(emp_id)
+    leaves = db.get_leave_requests_by_employee(emp_id)
+    leave_bal = db.get_leave_balance(emp_id)
+    
+    # Calculate project counts
+    proj_stats = {
+        'total': len(projects),
+        'accepted': len([p for p in projects if p.get('status') == 'accepted']),
+        'pending': len([p for p in projects if p.get('status') == 'pending'])
+    }
+    
+    # Get last leave date
+    last_leave_date = None
+    if leaves:
+        last_leave_date = leaves[0].get('from_date')
+
+    return render_template('admin_employee_profile.html',
+                           emp=emp,
+                           admin_info=admin_info,
+                           today=today_rec,
+                           analytics=analytics,
+                           projects=projects,
+                           proj_stats=proj_stats,
+                           leaves=leaves,
+                           leave_bal=leave_bal,
+                           last_leave_date=last_leave_date,
                            fmt_time=db.fmt_time,
                            fmt_date=db.fmt_date)
 
@@ -443,10 +502,14 @@ def api_register():
 def api_checkout():
     if 'employee_id' not in session:
         return jsonify({'success': False})
+    
+    now = datetime.now()
     hours = db.log_checkout(session['employee_id'])
+    
     return jsonify({
         'success':       True,
         'checked_in':    False,
+        'check_out_time': now.strftime('%H:%M:%S'),
         'working_hours': hours,
         'status':        'absent'
     })

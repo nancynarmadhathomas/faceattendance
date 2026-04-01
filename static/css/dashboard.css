@@ -217,6 +217,7 @@ body[data-theme="light"] #theme-toggle-btn {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  margin-top: 30px;
 }
 .nav-item {
   display: flex;
@@ -659,4 +660,65 @@ body[data-theme="light"] #theme-toggle-btn {
 }
 @media (min-width: 992px) {
   .grid-analytics { grid-template-columns: 1fr 1fr; }
+}
+/* ── Success Popup Modal ── */
+.success-modal {
+  background: var(--card-bg);
+  border: 1px solid rgba(16,185,129,0.2);
+  box-shadow: 0 15px 50px rgba(0,0,0,0.5), 0 0 20px rgba(16,185,129,0.1);
+  border-radius: 20px;
+}
+
+@keyframes popupFadeIn {
+  from { opacity: 0; transform: scale(0.9) translateY(20px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.modal-overlay {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: all 0.3s ease;
+}
+/* ── Notifications & Leave Scroll Fix (New Unified Struct) ── */
+.summary-card {
+  height: 420px;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+.card-body-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+/* Custom Scrollbar for Dashboard Cards */
+.card-body-scroll::-webkit-scrollbar { width: 4px; }
+.card-body-scroll::-webkit-scrollbar-track { background: transparent; }
+.card-body-scroll::-webkit-scrollbar-thumb {
+  background: rgba(99,102,241,0.2); 
+  border-radius: 10px;
+}
+.card-body-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
+.notif-item {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--border);
+  padding: 12px 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-radius: 8px;
+}
+
+.notif-item:hover {
+  background: rgba(255,255,255,0.03);
+  transform: translateX(4px);
+}
+
+.notif-item:last-child {
+  border-bottom: none;
 }

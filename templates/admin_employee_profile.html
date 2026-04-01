@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{ emp.name }} Profile — Face Attendance</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+</head>
+<body class="dark-theme">
+
+<div class="profile-layout-wrapper">
+  <main class="admin-main">
+    <!-- Top Header -->
+    <header class="premium-header">
+      <div class="header-welcome">
+        <div style="display:flex;align-items:center;gap:12px">
+            <a href="/admin/employees" class="control-icon" style="text-decoration:none"><i data-lucide="arrow-left"></i></a>
+            <div>
+                <h1>Employee Profile</h1>
+                <p>Viewing details for <strong>{{ emp.name }}</strong></p>
+            </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="profile-content-scroll">
+        <div class="profile-max-container">
+            <div class="dashboard-content profile-view">
+        <div class="profile-grid">
+            <!-- Left Column: Basic Info & Attendance -->
+            <div class="column-stack">
+                <!-- Section 1: Basic Info -->
+                <div class="metric-card basic-info-card">
+                    <div class="profile-header-main">
+                        <div class="profile-avatar-large">
+                            {% if emp.face_image %}
+                            <img src="data:image/jpeg;base64,{{ emp.face_image | b64encode }}" alt="{{ emp.name }}">
+                            {% else %}
+                            {{ emp.name[0] }}
+                            {% endif %}
+                        </div>
+                        <div class="profile-title-group">
+                            <h2>{{ emp.name }}</h2>
+                            <span class="badge badge-primary">{{ emp.title or 'Employee' }}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="info-list">
+                        <div class="info-item">
+                            <i data-lucide="hash"></i>
+                            <div><label>Employee ID</label><span>{{ emp.employee_id }}</span></div>
+                        </div>
+                        <div class="info-item">
+                            <i data-lucide="mail"></i>
+                            <div><label>Email Address</label><span>{{ emp.email or 'Not provided' }}</span></div>
+                        </div>
+                        <div class="info-item">
+                            <i data-lucide="shield"></i>
+                            <div><label>Role</label><span style="text-transform: capitalize;">{{ emp.role }}</span></div>
+                        </div>
+                        <div class="info-item">
+                            <i data-lucide="activity"></i>
+                            <div><label>Status</label><span class="badge badge-success">Active</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 2: Attendance Info -->
+                <div class="metric-card">
+                    <h3 class="card-title">Attendance Overview</h3>
+                    <div class="stats-row">
+                        <div class="stat-box">
+                            <span class="val">{{ analytics.attendance_pct }}%</span>
+                            <span class="lab">Attendance Rate</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="val">{{ analytics.late_count_month }}</span>
+                            <span class="lab">Late (Month)</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="val">{{ analytics.leaves_taken_month }}</span>
+                            <span class="lab">Leaves (Month)</span>
+                        </div>
+                    </div>
+
+                    <div class="detailed-attendance">
+                        <div class="att-row">
+                            <label>Today Status</label>
+                            <span class="badge badge-{{ today.status|lower if today else 'absent' }}">{{ today.status if today else 'Absent' }}</span>
+                        </div>
+                        <div class="att-row">
+                            <label>Clock In</label>
+                            <span>{{ fmt_time(today.check_in) if today else '--:--' }}</span>
+                        </div>
+                        <div class="att-row">
+                            <label>Clock Out</label>
+                            <span>{{ fmt_time(today.check_out) if today else '--:--' }}</span>
+                        </div>
+                        <div class="att-row">
+                            <label>Working Hours</label>
+                            <span>{{ today.working_hours if today else '0' }} hrs</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Work & Leaves & Actions -->
+            <div class="column-stack">
+                <!-- Section 3: Work Info -->
+                <div class="metric-card">
+                    <h3 class="card-title">Project Assignments</h3>
+                    <div class="stats-row" style="margin-bottom:20px">
+                        <div class="stat-mini">
+                            <span class="num">{{ proj_stats.total }}</span>
+                            <span class="lbl">Total</span>
+                        </div>
+                        <div class="stat-mini">
+                            <span class="num" style="color:var(--success)">{{ proj_stats.accepted }}</span>
+                            <span class="lbl">Accepted</span>
+                        </div>
+                        <div class="stat-mini">
+                            <span class="num" style="color:var(--warning)">{{ proj_stats.pending }}</span>
+                            <span class="lbl">Pending</span>
+                        </div>
+                    </div>
+
+                    <div class="project-list-compact">
+                        {% for p in projects %}
+                        <div class="project-item">
+                            <div class="p-info">
+                                <strong>{{ p.title }}</strong>
+                                <span>Deadline: {{ p.deadline }}</span>
+                            </div>
+                            <span class="badge badge-{{ p.status|lower }}">{{ p.status|capitalize }}</span>
+                        </div>
+                        {% else %}
+                        <p class="text-muted" style="text-align:center;padding:20px">No projects assigned yet.</p>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Section 4: Leave Info -->
+                <div class="metric-card">
+                    <h3 class="card-title">Leave Balance</h3>
+                    <div class="leave-balances">
+                        {% for type, bal in leave_bal.items() %}
+                        <div class="leave-item">
+                            <div class="flex-between" style="margin-bottom:6px">
+                                <span style="font-size:0.85rem">{{ type }}</span>
+                                <span style="font-size:0.8rem;color:var(--text-dim)">{{ bal.used }} / {{ bal.limit }}</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width:{{ (bal.used / bal.limit * 100) if bal.limit > 0 else 0 }}%"></div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <div class="att-row" style="margin-top:20px; border-top:1px solid var(--border); padding-top:15px">
+                        <label>Last Leave Date</label>
+                        <span>{{ last_leave_date if last_leave_date else 'No leaves taken' }}</span>
+                    </div>
+                </div>
+
+                <!-- Section 5: Actions -->
+                <div class="metric-card actions-card">
+                    <h3 class="card-title">Profile Actions</h3>
+                    <div class="action-buttons-grid">
+                        <button onclick="showEditModal('{{ emp.employee_id }}')" class="btn btn-primary">
+                            <i data-lucide="edit"></i> Edit Employee
+                        </button>
+                        <button onclick="deleteEmployee('{{ emp.employee_id }}')" class="btn btn-danger">
+                            <i data-lucide="trash-2"></i> Delete Employee
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+            </div>
+        </div>
+    </div>
+  </main>
+</div>
+
+<script>
+  function showEditModal(id) {
+    // This could trigger a modal on the main dashboard if needed,
+    // or we can implement the edit logic here.
+    alert("Edit feature for " + id + " is coming in the next update!");
+  }
+  
+  function deleteEmployee(id) {
+    if(confirm("Are you sure you want to delete this employee? This action cannot be undone.")) {
+        fetch('/api/admin/employee/' + id, { method: 'DELETE' })
+        .then(res => res.json())
+        .then(data => {
+            if(data.success) {
+                location.href = '/admin/employees';
+            } else {
+                alert("Failed to delete employee.");
+            }
+        });
+    }
+  }
+
+  lucide.createIcons();
+</script>
+
+</body>
+</html>

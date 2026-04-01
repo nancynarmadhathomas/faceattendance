@@ -111,9 +111,10 @@ def init_db():
     for stmt in tables:
         c.execute(stmt)
         
-    # Ensure late_reason column exists in attendance table
+    # Ensure late_reason and employee_name columns exist in attendance table
     try:
         c.execute("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('attendance') AND name = 'late_reason') ALTER TABLE attendance ADD late_reason NVARCHAR(255)")
+        c.execute("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('attendance') AND name = 'employee_name') ALTER TABLE attendance ADD employee_name NVARCHAR(100)")
     except Exception:
         pass
 
@@ -287,10 +288,16 @@ def log_checkin(employee_id, status='Present', late_reason=None):
     conn = get_conn()
     c = conn.cursor()
     now = datetime.now()
+    
+    # Fetch employee name first
+    c.execute("SELECT name FROM users WHERE employee_id=?", (employee_id,))
+    res = c.fetchone()
+    emp_name = res[0] if res else 'Unknown'
+
     c.execute("SELECT id FROM attendance WHERE employee_id=? AND date = CAST(GETDATE() AS DATE)", (employee_id,))
     if not c.fetchone():
-        c.execute("""INSERT INTO attendance (employee_id, date, check_in, status, late_reason)
-                     VALUES (?, CAST(GETDATE() AS DATE), ?, ?, ?)""", (employee_id, now, status, late_reason))
+        c.execute("""INSERT INTO attendance (employee_id, employee_name, date, check_in, status, late_reason)
+                     VALUES (?, ?, CAST(GETDATE() AS DATE), ?, ?, ?)""", (employee_id, emp_name, now, status, late_reason))
     conn.commit()
     conn.close()
 
@@ -371,7 +378,7 @@ def get_stats():
     c = conn.cursor()
     
     # 1. Counts
-    c.execute("SELECT COUNT(*) FROM users")
+    c.execute("SELECT COUNT(*) FROM users WHERE role != 'admin'")
     total = c.fetchone()[0] or 0
     c.execute("SELECT COUNT(*) FROM attendance WHERE date = CAST(GETDATE() AS DATE)")
     present = c.fetchone()[0] or 0
@@ -651,7 +658,7 @@ def get_admin_analytics(time_range):
         day_att = att_data.get(d_str, {'present': 0, 'late': 0})
         
         labels.append(d_str[-5:])
-        present.append(day_att['present'])
+        present.append(day_att['present'] + day_att['late'])
         late.append(day_att['late'])
         on_leave.append(leave_count)
         # Absent = Total - (Present + Late + On Leave)
@@ -757,48 +764,86 @@ def get_employee_analytics(employee_id):
     c = conn.cursor()
     today = dt.date.today()
     month_start = today.replace(day=1).isoformat()
+    # Find start of current week (Monday)
+    week_start = (today - dt.timedelta(days=today.weekday())).isoformat()
 
-    # Summary Stats
+    # 1. Monthly Summary Stats
     c.execute("""SELECT status, COUNT(*) as cnt FROM attendance
                  WHERE employee_id=? AND date>=? GROUP BY status""", (employee_id, month_start))
     att_rows = {r[0].lower(): r[1] for r in c.fetchall()}
-    present = att_rows.get('present', 0)
-    late = att_rows.get('late', 0)
+    present_m = att_rows.get('present', 0)
+    late_m = att_rows.get('late', 0)
     
-    total_days = today.day
-    pct = round((present + late) / total_days * 100) if total_days > 0 else 0
+    total_month_days = today.day
+    pct = round((present_m + late_m) / total_month_days * 100) if total_month_days > 0 else 0
     
     c.execute("SELECT COUNT(*) FROM leave_requests WHERE employee_id=? AND status='Approved' AND from_date>=?", (employee_id, month_start))
-    leaves = c.fetchone()[0] or 0
+    leaves_m = c.fetchone()[0] or 0
     
     c.execute("SELECT SUM(working_hours) FROM attendance WHERE employee_id=? AND date>=?", (employee_id, month_start))
-    hours = round(c.fetchone()[0] or 0, 1)
+    hours_m = round(c.fetchone()[0] or 0, 1)
 
-    # Monthly Bar (Dates)
+    # 2. Weekly Summary Stats
+    c.execute("""SELECT status, COUNT(*), SUM(working_hours) FROM attendance
+                 WHERE employee_id=? AND date>=? GROUP BY status""", (employee_id, week_start))
+    w_rows = c.fetchall()
+    present_w = sum(r[1] for r in w_rows if r[0].lower() == 'present')
+    late_w = sum(r[1] for r in w_rows if r[0].lower() == 'late')
+    hours_w = round(sum(r[2] or 0 for r in w_rows), 1)
+    
+    c.execute("SELECT COUNT(*) FROM leave_requests WHERE employee_id=? AND status='Approved' AND from_date>=?", (employee_id, week_start))
+    leaves_w = c.fetchone()[0] or 0
+
+    # 3. Monthly Attendance Distribution (Donut)
+    # Absent = Total Month Days - (Present + Late + Leaves)
+    absent_m = max(0, total_month_days - (present_m + late_m + leaves_m))
+    attendance_dist = {
+        'labels': ['Present', 'Late', 'Absent', 'Leave'],
+        'data': [present_m, late_m, absent_m, leaves_m]
+    }
+
+    # 4. Monthly Working Hours Trend (Daily)
     labels_bar, data_bar = [], []
     c.execute("SELECT date, working_hours FROM attendance WHERE employee_id=? AND date>=? ORDER BY date ASC", (employee_id, month_start))
     trend_map = {str(r[0]): r[1] for r in c.fetchall()}
     for i in range(1, today.day + 1):
         d_str = today.replace(day=i).isoformat()
-        labels_bar.append(d_str[-2:]) # Day Number
+        labels_bar.append(d_str[-5:]) # MM-DD
         data_bar.append(trend_map.get(d_str, 0))
 
-    # Leave Donut
+    # 5. Leave Summary (Casual, Sick, Permission)
+    LIMITS = {'Casual Leave': 12, 'Sick Leave': 10, 'Permission': 6}
     c.execute("SELECT leave_type, COUNT(*) FROM leave_requests WHERE employee_id=? AND status='Approved' GROUP BY leave_type", (employee_id,))
-    l_rows = c.fetchall()
-    leave_donut = {
-        'labels': [r[0] for r in l_rows] if l_rows else ['No Leaves'],
-        'data': [r[1] for r in l_rows] if l_rows else [0]
-    }
+    l_rows = {r[0]: r[1] for r in c.fetchall()}
+    leave_summary = []
+    total_remaining = 0
+    for lt, lim in LIMITS.items():
+        used = l_rows.get(lt, 0)
+        rem = max(0, lim - used)
+        total_remaining += rem
+        leave_summary.append({'type': lt, 'used': used, 'limit': lim, 'remaining': rem})
+
+    # 6. Recent Attendance (Analytics Table)
+    c.execute("SELECT TOP 10 date, check_in, check_out, working_hours, status FROM attendance WHERE employee_id=? ORDER BY date DESC", (employee_id,))
+    recent = _rows_to_dicts(c, c.fetchall())
 
     conn.close()
     return {
         'attendance_pct': pct,
-        'late_count_month': late,
-        'leaves_taken_month': leaves,
-        'working_hours_month': hours,
+        'present_days_month': present_m + late_m,
+        'late_count_month': late_m,
+        'working_hours_month': hours_m,
+        'weekly': {
+            'present': present_w,
+            'late': late_w,
+            'hours': hours_w,
+            'leaves': leaves_w
+        },
+        'attendance_dist': attendance_dist,
         'chart_monthly_bar': {'labels': labels_bar, 'data': data_bar},
-        'chart_leave_donut': leave_donut
+        'leave_summary': leave_summary,
+        'remaining_leaves_total': total_remaining,
+        'recent_attendance': recent
     }
 
 # --- Projects (Strict Mode) ---
@@ -889,3 +934,96 @@ def update_project_interest_status(project_id, employee_id, status):
               (status, project_id, employee_id))
     conn.commit()
     conn.close()
+
+# --- Specialized Analytics Helpers ---
+def get_live_status_analytics():
+    conn = get_conn()
+    c = conn.cursor()
+    
+    # 1. Working Now (Checked in today, no checkout)
+    c.execute("SELECT COUNT(*) FROM attendance WHERE date = CAST(GETDATE() AS DATE) AND check_in IS NOT NULL AND check_out IS NULL")
+    working = c.fetchone()[0] or 0
+    
+    # 2. Clocked Out (Checked out today)
+    c.execute("SELECT COUNT(*) FROM attendance WHERE date = CAST(GETDATE() AS DATE) AND check_out IS NOT NULL")
+    clocked_out = c.fetchone()[0] or 0
+    
+    # 3. Not Logged (Employees without attendance today)
+    # Exclude admins
+    c.execute("SELECT COUNT(*) FROM users WHERE role != 'admin'")
+    total_emps = c.fetchone()[0] or 0
+    c.execute("SELECT COUNT(DISTINCT employee_id) FROM attendance WHERE date = CAST(GETDATE() AS DATE)")
+    checked_in_today = c.fetchone()[0] or 0
+    not_logged = max(0, total_emps - checked_in_today)
+    
+    conn.close()
+    return {
+        'working_now': working,
+        'clocked_out': clocked_out,
+        'not_logged': not_logged
+    }
+
+def get_avg_working_hours_analytics():
+    import datetime as dt
+    conn = get_conn()
+    c = conn.cursor()
+    # Monthly total per employee
+    today = dt.date.today()
+    month_start = today.replace(day=1).isoformat()
+    
+    # Use LEFT JOIN to include ALL employees, even those with 0 hours
+    c.execute("""
+        SELECT u.name, COALESCE(SUM(a.working_hours), 0) as total_hrs
+        FROM users u
+        LEFT JOIN attendance a ON u.employee_id = a.employee_id AND a.date >= ?
+        WHERE u.employee_id != 'admin'
+        GROUP BY u.employee_id, u.name
+        ORDER BY total_hrs DESC
+    """, (month_start,))
+    rows = c.fetchall()
+    conn.close()
+    return {
+        'labels': [r[0] for r in rows],
+        'data': [round(float(r[1]), 1) for r in rows]
+    }
+
+def get_frequent_late_analytics():
+    conn = get_conn()
+    c = conn.cursor()
+    today = date.today()
+    month_start = today.replace(day=1).isoformat()
+    
+    c.execute("""
+        SELECT TOP 5 u.name, COUNT(a.id) as late_count
+        FROM users u
+        JOIN attendance a ON u.employee_id = a.employee_id
+        WHERE a.date >= ? AND a.status = 'Late' AND u.role != 'admin'
+        GROUP BY u.name
+        ORDER BY late_count DESC
+    """, (month_start,))
+    rows = c.fetchall()
+    conn.close()
+    return {
+        'labels': [r[0] for r in rows],
+        'data': [r[1] for r in rows]
+    }
+
+def get_leave_type_analytics():
+    conn = get_conn()
+    c = conn.cursor()
+    # Grouped by type for the bar chart
+    c.execute("""
+        SELECT leave_type, COUNT(*) as cnt 
+        FROM leave_requests 
+        WHERE status='Approved' 
+        GROUP BY leave_type
+    """)
+    rows = c.fetchall()
+    conn.close()
+    types = ['Casual Leave', 'Sick Leave', 'Permission', 'Half Day', 'Work From Home']
+    data_map = {r[0]: r[1] for r in rows}
+    return {
+        'labels': types,
+        'data': [data_map.get(t, 0) for t in types]
+    }
+

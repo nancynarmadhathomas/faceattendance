@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:flutter_lucide/flutter_Icons.dart';
+import 'package:flutter_lucide/flutter_lucide.dart';
 import '../theme.dart';
 import '../services/api_service.dart';
 import 'package:provider/provider.dart';
@@ -411,13 +411,13 @@ class _EmployeeDashboardState extends State<EmployeeDashboard> {
   Widget _buildStatsRow() {
     return Row(
       children: [
-        _buildStatTile('Present (Month)', _monthly['present']?.toString() ?? '0', Icons.person_round_check, AppColors.success),
+        _buildStatTile('Present (Month)', _monthly['present']?.toString() ?? '0', LucideIcons.userRoundCheck, AppColors.success),
         const SizedBox(width: 16),
-        _buildStatTile('Late (Month)', _monthly['late']?.toString() ?? '0', Icons.alert_triangle, AppColors.warning),
+        _buildStatTile('Late (Month)', _monthly['late']?.toString() ?? '0', LucideIcons.triangleAlert, AppColors.warning),
         const SizedBox(width: 16),
         _buildStatTile('Leaves Taken', _leaveReqs.where((l) => l.status == 'Approved').length.toString(), Icons.beach_access, AppColors.primaryLight),
         const SizedBox(width: 16),
-        _buildStatTile('Attendance %', '${_monthly['pct'] ?? 0}%', Icons.bar_chart_2, const Color(0xFF8B5CF6)),
+        _buildStatTile('Attendance %', '${_monthly['pct'] ?? 0}%', LucideIcons.barChart2, const Color(0xFF8B5CF6)),
       ],
     );
   }

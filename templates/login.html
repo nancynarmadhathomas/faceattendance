@@ -6,96 +6,84 @@
 <title>Sign In — Face Attendance</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
-<body>
+<body class="dash-body login-centered-body">
 
-<div class="login-grid">
-  <!-- Left brand panel -->
-  <div class="login-left">
-    <div style="text-align:center">
-      <div style="font-size:4rem;margin-bottom:16px">👁️</div>
-      <h1 style="font-size:2rem;font-weight:700;margin-bottom:12px">Face Attendance</h1>
-      <p style="color:#94a3b8;max-width:320px;line-height:1.6">
-        Secure, fast biometric attendance tracking. Look at the camera and you're in.
-      </p>
-    </div>
-    <div style="display:flex;gap:32px;margin-top:16px">
-      <div style="text-align:center">
-        <div style="font-size:1.5rem;font-weight:700;color:#6366f1">&lt;1s</div>
-        <div style="font-size:.75rem;color:#64748b">Login Time</div>
-      </div>
-      <div style="text-align:center">
-        <div style="font-size:1.5rem;font-weight:700;color:#10b981">99%</div>
-        <div style="font-size:.75rem;color:#64748b">Accuracy</div>
-      </div>
-      <div style="text-align:center">
-        <div style="font-size:1.5rem;font-weight:700;color:#f59e0b">No Touch</div>
-        <div style="font-size:.75rem;color:#64748b">Required</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Right login panel -->
-  <div class="login-right">
-    <!-- Background only -->
-  </div>
+<div class="login-bg-shards">
+  <div class="login-shard"></div>
+  <div class="login-shard"></div>
+  <div class="login-shard"></div>
+  <div class="login-shard"></div>
 </div>
 
-<!-- Absolutely centered camera section -->
-<div id="face-section" class="camera-absolute-center">
-  <div style="text-align:center">
-    <h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Good day! 👋</h2>
-    <p class="text-muted" style="font-size:.9rem">Look at the camera to sign in.</p>
-  </div>
+<!-- Top Left Logo -->
+<div class="login-top-left-logo">
+  <span style="font-size:1.8rem; font-weight:800; background:linear-gradient(135deg,#6366f1,#a855f7); -webkit-background-clip:text; -webkit-text-fill-color:transparent; letter-spacing:1px">KOLOZEN</span>
+  <span style="font-size:0.75rem; color:var(--muted); font-weight:600; letter-spacing:0.5px">Face Attendance</span>
+</div>
 
-  <div class="camera-wrap">
-    <div class="camera-ring">
-      <video id="video" autoplay muted playsinline></video>
-      <div class="scan-bar"></div>
+<div class="login-centered-wrap">
+  <div class="glass-login-card">
+    <div class="card-header" style="text-align:center; margin-bottom:32px">
+      <h2 style="font-size:1.85rem; font-weight:800; margin-bottom:8px">Good day! 👋</h2>
+      <p style="color:var(--muted); font-size:0.95rem">Look at the camera to sign in</p>
     </div>
-    <p class="camera-hint">"Align your face inside the circle"</p>
-  </div>
 
-  <div id="toast" class="toast toast-info" style="display:none;width:100%;max-width:420px;margin-top:0"></div>
+    <!-- Camera Section -->
+    <div class="camera-wrap" style="margin-bottom:32px">
+      <div class="camera-ring" style="width:190px; height:190px; border-width:4px">
+        <video id="video" autoplay muted playsinline></video>
+        <div class="scan-bar" style="height:4px; opacity:0.6"></div>
+      </div>
+      <p class="camera-hint" style="margin-top:16px; font-size:0.9rem">"Position your face inside the ring"</p>
+    </div>
 
-  <!-- Register prompt shown when face not found -->
-  <div id="register-prompt" style="display:none;width:100%;max-width:420px;padding:16px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:12px;text-align:center">
-    <p style="font-size:.875rem;color:#f87171;margin-bottom:12px">😕 Your face is not registered yet.</p>
-    <a href="/register" class="btn btn-primary btn-sm" style="display:inline-flex">📝 Register Now</a>
-  </div>
+    <div id="toast" class="toast toast-info" style="display:none; width:100%; margin-bottom:20px; border-radius:12px"></div>
 
-  <button id="capture-btn" class="btn btn-primary btn-block">📷 Verify Face</button>
+    <!-- Register prompt shown when face not found -->
+    <div id="register-prompt" style="display:none; width:100%; padding:16px; background:rgba(239,68,68,.08); border:1px solid rgba(239,68,68,.2); border-radius:12px; text-align:center; margin-bottom:20px">
+      <p style="font-size:.875rem; color:#f87171; margin-bottom:12px">Your face is not registered yet.</p>
+      <a href="/register" class="btn btn-primary btn-sm" style="display:inline-flex">Register Now</a>
+    </div>
 
-  <div style="text-align:center">
-    <p style="font-size:.85rem;color:var(--muted)">New employee? 
-      <a href="/register" style="color:var(--primary-light);font-weight:600">Register here</a>
-    </p>
+    <button id="capture-btn" class="btn btn-primary btn-block" style="padding:16px; font-size:1.1rem; border-radius:14px; transition: transform 0.2s, box-shadow 0.2s">
+      Verify Face
+    </button>
+
+    <div style="text-align:center; margin-top:24px">
+      <p style="color:var(--muted); font-size:0.9rem">New employee? 
+        <a href="/register" style="color:var(--primary-light); font-weight:700; text-decoration:none; margin-left:6px">Register</a>
+      </p>
+    </div>
   </div>
 </div>
 
 <!-- Late Reason Modal -->
 <div id="late-modal" class="modal-overlay hidden">
-  <div class="modal">
-    <div style="font-size:2rem;margin-bottom:8px">⏰</div>
-    <h3>You're Running Late</h3>
-    <p>Office hours start at 9:30 AM. Please select a reason for being late.</p>
-    <div class="form-group">
+  <div class="modal glass-login-card" style="max-width:400px; padding:32px">
+    <div style="font-size:2.5rem; margin-bottom:12px">⏰</div>
+    <h3 style="font-size:1.5rem; font-weight:800; margin-bottom:8px">You're Running Late</h3>
+    <p style="color:var(--muted); font-size:0.9rem; margin-bottom:24px">Office hours start at 9:30 AM. Attendance is marked late.</p>
+    
+    <div class="form-group" style="text-align:left; margin-bottom:24px">
       <label>Reason for Late Arrival</label>
-      <select id="late-reason" class="form-control">
-        <option value="">— Select a reason —</option>
-        <option value="Traffic">🚗 Traffic</option>
-        <option value="Health Issue">🏥 Health Issue</option>
-        <option value="Personal Work">💼 Personal Work</option>
-        <option value="Transport Delay">🚌 Transport Delay</option>
-        <option value="Emergency">🚨 Emergency</option>
-        <option value="Other">📝 Other</option>
+      <select id="late-reason" class="form-control" style="background:rgba(255,255,255,0.05); border-color:rgba(255,255,255,0.1)">
+        <option value="" style="background:#0b0f1a">— Select a reason —</option>
+        <option value="Traffic" style="background:#0b0f1a">🚗 Traffic</option>
+        <option value="Health Issue" style="background:#0b0f1a">🏥 Health Issue</option>
+        <option value="Personal Work" style="background:#0b0f1a">💼 Personal Work</option>
+        <option value="Transport Delay" style="background:#0b0f1a">🚌 Transport Delay</option>
+        <option value="Emergency" style="background:#0b0f1a">🚨 Emergency</option>
+        <option value="Other" style="background:#0b0f1a">📝 Other</option>
       </select>
     </div>
     <button onclick="submitLateReason()" class="btn btn-primary btn-block" id="late-submit-btn">Submit &amp; Continue</button>
   </div>
 </div>
 
-
-
 <script src="{{ url_for('static', filename='js/login.js') }}"></script>
 </body>
+</html>
+
+
+
 </html>

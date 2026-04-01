@@ -49,6 +49,12 @@
 
 <!-- ═══════════════════════════ SIDEBAR ═══════════════════════════ -->
 <aside class="sidebar">
+  <div style="padding:20px 24px;border-bottom:1px solid var(--border);margin-bottom:10px">
+    <div style="display:flex;flex-direction:column;line-height:1.1">
+      <span style="font-size:1.8rem;font-weight:800;background:linear-gradient(135deg,#6366f1,#a855f7);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:1px">KOLOZEN</span>
+      <span style="font-size:0.75rem;color:var(--muted);font-weight:600;letter-spacing:0.5px">Face Attendance</span>
+    </div>
+  </div>
 
   <div class="sidebar-profile">
     <div class="profile-photo-wrap">
@@ -76,25 +82,25 @@
     <a class="nav-item {{ 'active' if active_tab == 'overview' else '' }}" href="/dashboard">
       <span class="nav-icon"><i data-lucide="layout-dashboard" style="width:16px;height:16px"></i></span> Overview
     </a>
-    <a class="nav-item" onclick="showSection('attendance',this)">
+    <a class="nav-item {{ 'active' if active_tab == 'attendance' else '' }}" href="/attendance">
       <span class="nav-icon"><i data-lucide="clipboard-list" style="width:16px;height:16px"></i></span> Attendance
     </a>
-    <a class="nav-item" onclick="showSection('meetings',this)">
+    <a class="nav-item {{ 'active' if active_tab == 'meetings' else '' }}" href="/meetings">
       <span class="nav-icon"><i data-lucide="calendar" style="width:16px;height:16px"></i></span> Meetings
       {% if today_meets %}<span class="nav-badge">{{ today_meets|length }}</span>{% endif %}
     </a>
-    <a class="nav-item" onclick="showSection('leave-sec',this)">
+    <a class="nav-item {{ 'active' if active_tab == 'leave-sec' else '' }}" href="/leave-request">
       <span class="nav-icon"><i data-lucide="umbrella" style="width:16px;height:16px"></i></span> Leave Request
-      {% set pending_leaves = leave_reqs | selectattr('status','eq','Pending') | list %}
+      {% set pending_leaves = leave_reqs | selectattr('status', 'eq', 'Pending') | list %}
       {% if pending_leaves %}<span class="nav-badge" style="background:#f59e0b">{{ pending_leaves|length }}</span>{% endif %}
     </a>
-    <a class="nav-item" onclick="showSection('analytics',this)">
+    <a class="nav-item {{ 'active' if active_tab == 'analytics' else '' }}" onclick="showSection('analytics',this)">
       <span class="nav-icon"><i data-lucide="bar-chart-2" style="width:16px;height:16px"></i></span> Analytics
     </a>
     <a class="nav-item {{ 'active' if active_tab == 'project-work' else '' }}" href="/project-work">
       <span class="nav-icon"><i data-lucide="briefcase" style="width:16px;height:16px"></i></span> Project Work
     </a>
-    <a class="nav-item" onclick="showSection('profile-sec',this)">
+    <a class="nav-item {{ 'active' if active_tab == 'profile-sec' else '' }}" onclick="showSection('profile-sec',this)">
       <span class="nav-icon"><i data-lucide="user" style="width:16px;height:16px"></i></span> My Profile
     </a>
   </nav>
@@ -295,69 +301,73 @@
     <!-- ROW 2: Leave Balance + Notifications -->
     <div class="mid-grid" style="margin-bottom:20px">
       <!-- Leave Balance -->
-      <div class="dash-card">
-        <div class="card-header">
+      <div class="dash-card summary-card">
+        <div class="card-header" style="flex-shrink:0">
           <span class="card-title"><i data-lucide="umbrella" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Leave Balance</span>
           <span class="card-sub">Annual allocation</span>
         </div>
-        {% for lt, bal in leave_bal.items() %}
-        <div style="margin-bottom:12px">
-          <div style="display:flex;justify-content:space-between;font-size:.8rem;margin-bottom:4px">
-            <span>{{ lt }}</span>
-            <span style="font-weight:600;color:{% if bal.remaining <= 2 %}var(--danger){% elif bal.remaining <= 5 %}var(--warn){% else %}var(--success){% endif %}">
-              {{ bal.remaining }} / {{ bal.limit }} left
-            </span>
-          </div>
-          <div style="background:var(--border);border-radius:999px;height:6px">
-            {% set bp = ((bal.used / bal.limit) * 100)|int %}
-            <div style="height:100%;width:{{ bp }}%;border-radius:999px;
-              background:{% if bp >= 80 %}var(--danger){% elif bp >= 50 %}var(--warn){% else %}var(--accent){% endif %};
-              transition:width .5s"></div>
-          </div>
-        </div>
-        {% endfor %}
-      </div>
-
-      <!-- Notifications -->
-      <div class="dash-card">
-        <div class="card-header">
-          <span class="card-title"><i data-lucide="bell" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Notifications</span>
-          <span class="card-sub">{{ notifs|length }} alert(s)</span>
-        </div>
-        {% if notifs %}
-          {% for n in notifs %}
-          <div style="display:flex;flex-direction:column;border-bottom:1px solid var(--border);padding:10px 0">
-            <div style="display:flex;gap:10px;align-items:flex-start">
-              <span style="flex-shrink:0;opacity:0.8"><i data-lucide="{{ n.get('icon', 'bell') }}" style="width:16px;height:16px"></i></span>
-              <div style="flex:1">
-                <div style="font-size:.83rem; cursor:pointer; font-weight:600; white-space:pre-wrap" onclick="handleNotificationClick({{ n.message|tojson }}, {{ n.get('type','info')|tojson }}, {{ n.get('project_id','')|tojson }}, this)">
-                  {{ n.message }}
-                </div>
-                <!-- Inline Expansion Area -->
-                <div id="inline-project-{{ n.get('project_id','') }}" class="inline-project-info hidden" style="margin-top:12px; background:rgba(255,255,255,0.03); border-radius:8px; padding:12px">
-                   <div id="p-inline-details-{{ n.get('project_id','') }}">
-                      <div id="p-title-{{ n.get('project_id','') }}" style="font-weight:600; font-size:0.9rem; margin-bottom:8px">Loading...</div>
-                      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:0.75rem; color:var(--text-dim); margin-bottom:12px">
-                        <div>Members: <span id="p-members-{{ n.get('project_id','') }}">--</span></div>
-                        <div>Deadline: <span id="p-deadline-{{ n.get('project_id','') }}">--</span></div>
-                      </div>
-                      <div id="p-actions-{{ n.get('project_id','') }}" style="display:flex; gap:8px">
-                        <button onclick="submitProjectResponseInline('{{ n.get('project_id','') }}', 'accepted')" class="btn btn-success btn-xs" style="flex:1">Accept</button>
-                        <button onclick="submitProjectResponseInline('{{ n.get('project_id','') }}', 'declined')" class="btn btn-danger btn-xs" style="flex:1">Decline</button>
-                      </div>
-                      <div id="p-responded-{{ n.get('project_id','') }}" class="hidden" style="text-align:center; padding:5px; background:rgba(255,255,255,0.05); border-radius:4px">
-                        <p style="font-size:0.75rem; margin-bottom:0">You responded to this project.</p>
-                      </div>
-                   </div>
-                </div>
-              </div>
+        <div class="card-body-scroll">
+          {% for lt, bal in leave_bal.items() %}
+          <div style="margin-bottom:12px">
+            <div style="display:flex;justify-content:space-between;font-size:.8rem;margin-bottom:4px">
+              <span>{{ lt }}</span>
+              <span style="font-weight:600;color:{% if bal.remaining <= 2 %}var(--danger){% elif bal.remaining <= 5 %}var(--warn){% else %}var(--success){% endif %}">
+                {{ bal.remaining }} / {{ bal.limit }} left
+              </span>
+            </div>
+            <div style="background:var(--border);border-radius:999px;height:6px">
+              {% set bp = ((bal.used / bal.limit) * 100)|int %}
+              <div style="height:100%;width:{{ bp }}%;border-radius:999px;
+                background:{% if bp >= 80 %}var(--danger){% elif bp >= 50 %}var(--warn){% else %}var(--accent){% endif %};
+                transition:width .5s"></div>
             </div>
           </div>
           {% endfor %}
-          
-        {% else %}
-          <div class="empty-state">No new notifications</div>
-        {% endif %}
+        </div>
+      </div>
+
+      <!-- Notifications -->
+      <div class="dash-card summary-card">
+        <div class="card-header" style="flex-shrink:0">
+          <span class="card-title"><i data-lucide="bell" style="width:15px;height:15px;vertical-align:middle;margin-right:5px"></i>Notifications</span>
+          <span class="card-sub">{{ notifs|length }} alert(s)</span>
+        </div>
+        
+        <div class="card-body-scroll">
+          {% if notifs %}
+            {% for n in notifs %}
+            <div class="notif-item" onclick="handleNotificationClick({{ n.message|tojson }}, {{ n.get('type','info')|tojson }}, {{ n.get('project_id','')|tojson }}, this)">
+              <div style="display:flex;gap:10px;align-items:flex-start">
+                <span style="flex-shrink:0;opacity:0.8"><i data-lucide="{{ n.get('icon', 'bell') }}" style="width:16px;height:16px"></i></span>
+                <div style="flex:1">
+                  <div style="font-size:.83rem; font-weight:600; white-space:pre-wrap">
+                    {{ n.message }}
+                  </div>
+                  <!-- Inline Expansion Area (preserved) -->
+                  <div id="inline-project-{{ n.get('project_id','') }}" class="inline-project-info hidden" style="margin-top:12px; background:rgba(255,255,255,0.03); border-radius:8px; padding:12px">
+                     <div id="p-inline-details-{{ n.get('project_id','') }}">
+                        <div id="p-title-{{ n.get('project_id','') }}" style="font-weight:600; font-size:0.9rem; margin-bottom:8px">Loading...</div>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:0.75rem; color:var(--text-dim); margin-bottom:12px">
+                          <div>Members: <span id="p-members-{{ n.get('project_id','') }}">--</span></div>
+                          <div>Deadline: <span id="p-deadline-{{ n.get('project_id','') }}">--</span></div>
+                        </div>
+                        <div id="p-actions-{{ n.get('project_id','') }}" style="display:flex; gap:8px">
+                          <button onclick="submitProjectResponseInline('{{ n.get('project_id','') }}', 'accepted'); event.stopPropagation();" class="btn btn-success btn-xs" style="flex:1">Accept</button>
+                          <button onclick="submitProjectResponseInline('{{ n.get('project_id','') }}', 'declined'); event.stopPropagation();" class="btn btn-danger btn-xs" style="flex:1">Decline</button>
+                        </div>
+                        <div id="p-responded-{{ n.get('project_id','') }}" class="hidden" style="text-align:center; padding:5px; background:rgba(255,255,255,0.05); border-radius:4px">
+                          <p style="font-size:0.75rem; margin-bottom:0">You responded to this project.</p>
+                        </div>
+                      </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          {% else %}
+            <div class="empty-state">No new notifications</div>
+          {% endif %}
+        </div>
       </div>
     </div>
   </section>
@@ -388,29 +398,40 @@
         <span class="card-title"><i data-lucide="clipboard-list" style="width:16px;height:16px;vertical-align:middle;margin-right:8px"></i>Full Attendance History</span>
         <span class="card-sub">{{ history|length }} total records</span>
       </div>
-      <table class="dash-table">
-        <thead>
-          <tr>
-            <th>#</th><th>Date</th><th>Check In</th><th>Check Out</th>
-            <th>Hours</th><th>Status</th><th>Late Reason</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for r in history %}
-          <tr>
-            <td class="text-muted" style="font-size:.8rem">{{ loop.index }}</td>
-            <td>{{ fmt_date(r.date) }}</td>
-            <td class="mono text-green">{{ fmt_time(r.check_in) }}</td>
-            <td class="mono text-muted">{{ fmt_time(r.check_out) }}</td>
-            <td><strong>{{ r.working_hours or '—' }}{% if r.working_hours %}h{% endif %}</strong></td>
-            <td><span class="pill pill-{{ r.status|lower }}">{{ r.status|title }}</span></td>
-            <td class="text-muted" style="font-size:.8rem">{{ r.late_reason or '—' }}</td>
-          </tr>
-          {% else %}
-          <tr><td colspan="7" class="empty-row">No attendance records found</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
+      <div style="overflow-x:auto">
+        <table class="dash-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>EMP ID</th>
+              <th>EMP NAME</th>
+              <th>Date</th>
+              <th>Check In</th>
+              <th>Check Out</th>
+              <th>Hours</th>
+              <th>Status</th>
+              <th>Late Reason</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in history %}
+            <tr>
+              <td class="text-muted" style="font-size:.8rem">{{ loop.index }}</td>
+              <td style="font-weight:600; color:var(--accent)">{{ r.employee_id }}</td>
+              <td style="font-weight:600">{{ emp.name }}</td>
+              <td>{{ fmt_date(r.date) }}</td>
+              <td class="mono text-green">{{ fmt_time(r.check_in) }}</td>
+              <td class="mono text-muted">{{ fmt_time(r.check_out) }}</td>
+              <td><strong>{{ r.working_hours or '—' }}{% if r.working_hours %}h{% endif %}</strong></td>
+              <td><span class="pill pill-{{ r.status|lower }}">{{ r.status|title }}</span></td>
+              <td class="text-muted" style="font-size:.8rem; max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap" title="{{ r.late_reason or '—' }}">{{ r.late_reason or '—' }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="9" class="empty-row">No attendance records found</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
   </section>
 
@@ -580,55 +601,140 @@
   </section>
 
   <!-- ════════ ANALYTICS ════════ -->
-  <!-- ════════ ANALYTICS ════════ -->
-  <!-- ════════ ANALYTICS ════════ -->
-  <section id="analytics" class="dash-section hidden">
-    <!-- ROW 1 — KPI CARDS -->
+  <section id="analytics" class="dash-section {{ 'hidden' if active_tab != 'analytics' else '' }}">
+    <div class="dash-header" style="margin-bottom:24px">
+      <div class="dash-title-wrap">
+        <h2 class="dash-title">Personal Analytics</h2>
+        <p class="dash-subtitle">Insights into your attendance and performance</p>
+      </div>
+    </div>
+
+    <!-- ROW 1 — TOP CARDS (Personal Stats) -->
     <div class="stats-row" style="margin-bottom:24px">
       <div class="stat-tile" style="--c:#8b5cf6">
-        <div class="stat-icon"><i data-lucide="activity" style="width:20px;height:20px;color:#8b5cf6"></i></div>
+        <div class="stat-icon"><i data-lucide="percent" style="width:20px;height:20px;color:#8b5cf6"></i></div>
         <div class="stat-body">
           <div class="stat-label">Attendance %</div>
           <div class="stat-val">{{ analytics.attendance_pct }}%</div>
         </div>
       </div>
+      <div class="stat-tile" style="--c:#10b981">
+        <div class="stat-icon"><i data-lucide="user-check" style="width:20px;height:20px;color:#10b981"></i></div>
+        <div class="stat-body">
+          <div class="stat-label">Present Days (Month)</div>
+          <div class="stat-val">{{ analytics.present_days_month }}</div>
+        </div>
+      </div>
       <div class="stat-tile" style="--c:#f59e0b">
         <div class="stat-icon"><i data-lucide="alert-triangle" style="width:20px;height:20px;color:#f59e0b"></i></div>
         <div class="stat-body">
-          <div class="stat-label">Late Count</div>
+          <div class="stat-label">Late Count (Month)</div>
           <div class="stat-val">{{ analytics.late_count_month }}</div>
         </div>
       </div>
       <div class="stat-tile" style="--c:#6366f1">
-        <div class="stat-icon"><i data-lucide="umbrella" style="width:20px;height:20px;color:#6366f1"></i></div>
+        <div class="stat-icon"><i data-lucide="clock" style="width:20px;height:20px;color:#6366f1"></i></div>
         <div class="stat-body">
-          <div class="stat-label">Leaves Taken</div>
-          <div class="stat-val">{{ analytics.leaves_taken_month }}</div>
-        </div>
-      </div>
-      <div class="stat-tile" style="--c:#10b981">
-        <div class="stat-icon"><i data-lucide="clock" style="width:20px;height:20px;color:#10b981"></i></div>
-        <div class="stat-body">
-          <div class="stat-label">Working Hours (month)</div>
+          <div class="stat-label">Total Hours (Month)</div>
           <div class="stat-val">{{ analytics.working_hours_month }}h</div>
         </div>
       </div>
     </div>
 
-    <!-- ROW 2 — MONTHLY WORKING HOURS -->
+    <!-- ROW 2 — DAILY WORKING HOURS BAR CHART -->
     <div class="dash-card" style="margin-bottom:24px">
       <div class="card-header">
-        <span class="card-title"><i data-lucide="bar-chart-2" style="width:15px;height:15px;vertical-align:middle;margin-right:8px"></i>Monthly Working Hours</span>
+        <span class="card-title"><i data-lucide="bar-chart-2" style="width:15px;height:15px;vertical-align:middle;margin-right:8px"></i>Daily Working Hours</span>
       </div>
-      <div id="chart-monthly-bar" style="min-height: 300px; padding: 10px;"></div>
+      <div id="chart-working-hours-bar" style="min-height: 320px; padding: 10px;"></div>
     </div>
 
-    <!-- ROW 3 — LEAVE BREAKDOWN -->
-    <div class="dash-card" style="max-width: 600px; margin-bottom: 24px;">
-      <div class="card-header">
-        <span class="card-title"><i data-lucide="pie-chart" style="width:15px;height:15px;vertical-align:middle;margin-right:8px"></i>Leave Breakdown</span>
+    <div class="grid-2" style="margin-bottom:24px; gap:24px">
+      <!-- ROW 3 — ATTENDANCE BREAKDOWN DONUT -->
+      <div class="dash-card" style="height:100%">
+        <div class="card-header">
+          <span class="card-title"><i data-lucide="pie-chart" style="width:15px;height:15px;vertical-align:middle;margin-right:8px"></i>Attendance Breakdown</span>
+        </div>
+        <div id="chart-att-dist" style="min-height: 300px; padding: 10px;"></div>
       </div>
-      <div id="chart-leave-donut" style="min-height: 280px; padding: 10px;"></div>
+
+      <!-- ROW 4 — WEEKLY SUMMARY CARDS -->
+      <div style="display:flex; flex-direction:column; gap:16px">
+        <div class="dash-card" style="border-left:4px solid var(--accent)">
+            <div style="padding:16px 20px; display:flex; justify-content:space-between; align-items:center">
+                <span class="stat-label" style="margin:0">This Week Present</span>
+                <span class="stat-val" style="font-size:1.2rem">{{ analytics.weekly.present }} days</span>
+            </div>
+        </div>
+        <div class="dash-card" style="border-left:4px solid var(--warn)">
+            <div style="padding:16px 20px; display:flex; justify-content:space-between; align-items:center">
+                <span class="stat-label" style="margin:0">This Week Late</span>
+                <span class="stat-val" style="font-size:1.2rem">{{ analytics.weekly.late }} mins</span>
+            </div>
+        </div>
+        <div class="dash-card" style="border-left:4px solid var(--success)">
+            <div style="padding:16px 20px; display:flex; justify-content:space-between; align-items:center">
+                <span class="stat-label" style="margin:0">This Week Hours</span>
+                <span class="stat-val" style="font-size:1.2rem">{{ analytics.weekly.hours }}h</span>
+            </div>
+        </div>
+        <div class="dash-card" style="border-left:4px solid #ec4899">
+            <div style="padding:16px 20px; display:flex; justify-content:space-between; align-items:center">
+                <span class="stat-label" style="margin:0">This Week Leaves</span>
+                <span class="stat-val" style="font-size:1.2rem">{{ analytics.weekly.leaves }} days</span>
+            </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROW 5 — RECENT ATTENDANCE TABLE -->
+    <div class="dash-card" style="margin-bottom:24px">
+      <div class="card-header">
+        <span class="card-title"><i data-lucide="list" style="width:15px;height:15px;vertical-align:middle;margin-right:8px"></i>Recent Attendance Table</span>
+      </div>
+      <div style="padding:0 20px 20px">
+        <table class="table" style="width:100%">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Clock In</th>
+              <th>Clock Out</th>
+              <th>Hours</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for rec in analytics.recent_attendance %}
+            <tr>
+              <td>{{ rec.date }}</td>
+              <td style="font-family:monospace">{{ fmt_time(rec.check_in) if rec.check_in else '--:--' }}</td>
+              <td style="font-family:monospace">{{ fmt_time(rec.check_out) if rec.check_out else '--:--' }}</td>
+              <td style="font-weight:600">{{ rec.working_hours or 0 }}h</td>
+              <td><span class="pill pill-{{ rec.status | lower }}">{{ rec.status }}</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ROW 6 — LEAVE SUMMARY GRID (Single Row) -->
+    <div style="margin-bottom:32px">
+        <h3 style="font-size:1.1rem; font-weight:700; margin-bottom:16px">Leave Summary</h3>
+        <div class="grid-4" style="gap:16px">
+            {% for ls in analytics.leave_summary %}
+            <div class="dash-card" style="padding:20px; text-align:center; height:100%; display:flex; flex-direction:column; justify-content:center">
+                <div style="color:var(--muted); font-size:0.8rem; margin-bottom:8px">{{ ls.type }}</div>
+                <div style="font-size:1.6rem; font-weight:800; color:var(--text); margin-bottom:4px">{{ ls.used }} / {{ ls.limit }}</div>
+                <div style="font-size:0.75rem; color:var(--success); font-weight:600">{{ ls.remaining }} Remaining</div>
+            </div>
+            {% endfor %}
+            <div class="dash-card" style="padding:20px; text-align:center; height:100%; display:flex; flex-direction:column; justify-content:center; background:linear-gradient(135deg, rgba(99,102,241,0.05) 0%, rgba(139,92,246,0.05) 100%)">
+                <div style="color:var(--muted); font-size:0.8rem; margin-bottom:8px">Total Remaining</div>
+                <div style="font-size:1.6rem; font-weight:800; color:var(--accent2); margin-bottom:4px">{{ analytics.remaining_leaves_total }}</div>
+                <div style="font-size:0.75rem; color:var(--muted)">All Categories</div>
+            </div>
+        </div>
     </div>
   </section>
 
@@ -646,7 +752,7 @@
       {% if p.status == 'pending' or p.status == 'accepted' or p.status == 'declined' %}
       <div class="dash-card">
         <div class="card-header" style="padding-bottom:10px">
-          <span class="card-title" style="font-size:1.05rem">{{ p.title }}</span>
+          <span id="p-title-{{ p.project_id }}" class="card-title" style="font-size:1.05rem">{{ p.title }}</span>
           {% if p.status == 'accepted' %}
             <span class="pill pill-present">Accepted</span>
           {% elif p.status == 'declined' %}
@@ -688,37 +794,104 @@
       const commonOptions = {
         chart: { foreColor: '#94a3b8', toolbar: { show: false }, background: 'transparent' },
         theme: { mode: 'dark' },
-        grid: { borderColor: 'rgba(255,255,255,0.05)', strokeDashArray: 4 }
+        grid: { borderColor: 'rgba(255,255,255,0.05)', strokeDashArray: 4 },
+        stroke: { curve: 'smooth', width: 2 }
       };
 
-      // 1. Monthly Working Hours Bar
-      if (document.querySelector("#chart-monthly-bar")) {
-        new ApexCharts(document.querySelector("#chart-monthly-bar"), {
+      // 1. Daily Working Hours (Bar)
+      if (document.querySelector("#chart-working-hours-bar")) {
+        // Map Monthly data to a fixed Weekly grid [Mon, Tue, Wed, Thu, Fri, Sat, Sun]
+        const monToSunData = [0, 0, 0, 0, 0, 0, 0];
+        const dayIndices = { 1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 0: 6 }; // Mon=0 ... Sun=6
+
+        // Fill mapping (using last available value for each weekday)
+        data.chart_monthly_bar.labels.forEach((dateLabel, i) => {
+          const d = new Date(dateLabel);
+          const dayIndex = dayIndices[d.getDay()];
+          monToSunData[dayIndex] = data.chart_monthly_bar.data[i];
+        });
+
+        new ApexCharts(document.querySelector("#chart-working-hours-bar"), {
           ...commonOptions,
-          series: [{ name: 'Hours Worked', data: data.chart_monthly_bar.data }],
-          chart: { ...commonOptions.chart, type: 'bar', height: 300 },
-          colors: ['#6366f1'],
-          plotOptions: { bar: { borderRadius: 4, columnWidth: '60%' } },
+          series: [{ name: 'Hours Worked', data: monToSunData }],
+          chart: { ...commonOptions.chart, type: 'bar', height: 320 },
+          colors: ['#6366f1'], // Standard Theme Color (Indigo)
+          stroke: { show: false },
+          plotOptions: {
+            bar: {
+              borderRadius: 6,
+              columnWidth: '60%',
+              distributed: false,
+              dataLabels: { position: 'top' }
+            }
+          },
+          fill: {
+            type: 'gradient',
+            gradient: { 
+                shade: 'dark', 
+                type: "vertical", 
+                shadeIntensity: 0.1, 
+                opacityFrom: 0.85, 
+                opacityTo: 0.85, 
+                stops: [0, 100] 
+            }
+          },
+          dataLabels: {
+            enabled: true,
+            offsetY: -22,
+            style: { fontSize: '11px', colors: ["#94a3b8"] },
+            formatter: (val) => val + 'h'
+          },
           xaxis: { 
-            categories: data.chart_monthly_bar.labels,
-            title: { text: 'Date', style: { color: '#64748b' } },
+            categories: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+            labels: {
+                style: { colors: '#94a3b8', fontSize: '12px' }
+            },
             axisBorder: { show: false }, axisTicks: { show: false }
           },
-          yaxis: { title: { text: 'Hours', style: { color: '#64748b' } } }
+          yaxis: { 
+            min: 0,
+            max: 10,
+            tickAmount: 5,
+            labels: { 
+                formatter: (val) => val + 'h',
+                style: { colors: '#94a3b8' }
+            },
+            title: { text: 'Hours Worked', style: { color: '#64748b' } } 
+          },
+          tooltip: {
+            theme: 'dark',
+            y: { formatter: (val) => val + " hours" }
+          },
+          grid: {
+            ...commonOptions.grid,
+            borderColor: 'rgba(255,255,255,0.06)'
+          }
         }).render();
       }
 
-      // 2. Leave Breakdown Donut
-      if (document.querySelector("#chart-leave-donut")) {
-        new ApexCharts(document.querySelector("#chart-leave-donut"), {
+      // 2. Attendance Breakdown Donut
+      if (document.querySelector("#chart-att-dist")) {
+        new ApexCharts(document.querySelector("#chart-att-dist"), {
           ...commonOptions,
-          series: data.chart_leave_donut.data,
-          labels: data.chart_leave_donut.labels,
-          chart: { ...commonOptions.chart, type: 'donut', height: 280 },
-          colors: ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#10b981'],
+          series: data.attendance_dist.data,
+          labels: data.attendance_dist.labels,
+          chart: { ...commonOptions.chart, type: 'donut', height: 300 },
+          colors: ['#10b981', '#f59e0b', '#ef4444', '#6366f1'],
           stroke: { show: false },
           legend: { position: 'bottom', fontSize: '13px' },
-          plotOptions: { pie: { donut: { size: '70%', labels: { show: true, total: { show: true, label: 'Leaves' } } } } }
+          plotOptions: { 
+            pie: { 
+                donut: { 
+                    size: '75%', 
+                    labels: { 
+                        show: true, 
+                        total: { show: true, label: 'Total Days', color: '#94a3b8' },
+                        value: { color: '#ffffff' }
+                    } 
+                } 
+            } 
+          }
         }).render();
       }
     });
@@ -817,11 +990,45 @@
       const respText = document.getElementById(`p-res-text-${pid}`);
       respDiv.classList.remove('hidden');
       respText.innerText = (status === 'accepted') ? 'Accepted' : 'Declined';
+      
+      // SHOW SUCCESS POPUP FOR ACCEPTED STATUS
+      if (status === 'accepted') {
+        const titleText = document.getElementById(`p-title-${pid}`).innerText;
+        const popup = document.getElementById('accept-success-popup');
+        const projNameEl = document.getElementById('success-project-name');
+        
+        projNameEl.innerText = titleText;
+        popup.classList.remove('hidden');
+        
+        // Auto hide after 2 seconds
+        setTimeout(() => {
+           popup.classList.add('hidden');
+        }, 2000);
+      }
     } else {
       alert("Error submitting response");
     }
   }
 </script>
+
+<!-- ====== PROJECT ACCEPTED SUCCESS POPUP ====== -->
+<div id="accept-success-popup" class="modal-overlay hidden" style="z-index: 2000; backdrop-filter: blur(8px);">
+  <div class="modal" style="text-align: center; max-width: 340px; padding: 40px 20px; animation: popupFadeIn 0.3s ease-out;">
+    <div style="margin-bottom: 16px;">
+      <i data-lucide="check-circle" style="width: 54px; height: 54px; color: var(--success);"></i>
+    </div>
+    <h3 style="margin-bottom: 8px;">Project Accepted</h3>
+    <p style="font-size: 0.9rem; color: var(--muted); margin-bottom: 12px;">You have successfully accepted this project</p>
+    <div id="success-project-name" style="font-weight: 700; color: var(--accent); font-size: 1.1rem;">--</div>
+  </div>
+</div>
+
+<style>
+@keyframes popupFadeIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+</style>
 
 </body>
 </html>

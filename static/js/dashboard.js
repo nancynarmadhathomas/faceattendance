@@ -1,11 +1,26 @@
 // ── Dashboard State & Timer ──────────────────────────────────────────
 let timerInterval = null;
 
+function formatTime(timeVal) {
+  if (!timeVal || timeVal === '--:--' || timeVal === '--:--:--') return '--:--';
+  try {
+    // If it's already in a recognizable format like HH:MM:SS or HH:MM
+    let [h, m] = timeVal.split(':');
+    h = parseInt(h);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12;
+    h = h ? h : 12; // the hour '0' should be '12'
+    return `${h.toString().padStart(2, '0')}:${m} ${ampm}`;
+  } catch (e) {
+    return timeVal;
+  }
+}
+
 function updateDashboardUI(data) {
   if (!data) return;
   const state = window.DASHBOARD_STATE = { ...window.DASHBOARD_STATE, ...data };
   
-  // 1. Sidebar Status (Added back for simple Logged In/Out state)
+  // 1. Sidebar Status
   const sidebar = document.getElementById('sidebar-status');
   if (sidebar) {
     if (state.checked_in) {
@@ -21,8 +36,8 @@ function updateDashboardUI(data) {
   const btnContainer = document.getElementById('action-btn-container');
   if (btnContainer) {
     if (!state.checked_in) {
-      if (state.working_hours > 0) {
-        btnContainer.innerHTML = `<div class="badge-pill badge-muted">Clocked out · ${state.check_out_time || '--:--'}</div>`;
+      if (state.working_hours > 0 || state.check_out_time) {
+        btnContainer.innerHTML = `<div class="badge-pill badge-muted">Clocked out · ${formatTime(state.check_out_time)}</div>`;
       } else {
         btnContainer.innerHTML = '<button id="checkin-btn" onclick="doCheckin()" class="btn-checkout" style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;border-color:transparent"><i data-lucide="clock" style="width:14px;height:14px;vertical-align:middle;margin-right:4px"></i>Clock In</button>';
       }
@@ -31,19 +46,21 @@ function updateDashboardUI(data) {
     }
   }
 
-  // 2. Banner Stat (Keep for now unless asked to remove)
+  // 3. Banner & Status
   const pill = document.getElementById('today-status-pill');
   if (pill) {
-    pill.className = `pill pill-${state.status}`;
-    pill.textContent = state.status.charAt(0).toUpperCase() + state.status.slice(1);
+    const status = state.checked_in ? 'present' : (state.working_hours > 0 ? 'present' : (state.status || 'absent'));
+    pill.className = `pill pill-${status}`;
+    pill.textContent = status.charAt(0).toUpperCase() + status.slice(1);
   }
+  
   const timeVal = document.getElementById('checkin-time-val');
-  if (timeVal) timeVal.textContent = state.check_in_time || '--:--';
+  if (timeVal) timeVal.textContent = formatTime(state.check_in_time);
 
   const outTimeVal = document.getElementById('checkout-time-val');
-  if (outTimeVal) outTimeVal.textContent = state.check_out_time || '--:--';
+  if (outTimeVal) outTimeVal.textContent = formatTime(state.check_out_time);
 
-  // 3. Working Hours Timer Logic
+  // 4. Working Hours Timer Logic
   if (state.checked_in && state.check_in_time) {
     startWorkingHoursTimer(state.check_in_time);
   } else {
@@ -175,6 +192,49 @@ async function doCheckin() {
     alert('Server error. Please try again.');
     btn.disabled = false;
     btn.innerHTML = originalText;
+  }
+}
+
+// Global late reason confirmation
+async function confirmLateReason() {
+  const select = document.getElementById('late-reason-select');
+  const reason = select ? select.value : '';
+  
+  if (!reason) {
+    alert('⚠️ Please select a reason for late arrival.');
+    return;
+  }
+
+  const btn = document.getElementById('late-confirm-btn');
+  const originalText = btn ? btn.textContent : 'Confirm';
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ Submitting...';
+  }
+
+  try {
+    const res = await fetch('/api/late-reason', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason })
+    });
+    const data = await res.json();
+    
+    if (data.success) {
+      console.log('Late reason captured:', reason);
+      document.getElementById('late-modal').classList.add('hidden');
+      // Success feedback (optional toast could go here)
+    } else {
+      alert('❌ Failed to save reason. Please try again.');
+    }
+  } catch (e) {
+    console.error('Error in confirmLateReason:', e);
+    alert('Server error. Please try again.');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = originalText;
+    }
   }
 }
 
@@ -333,15 +393,54 @@ async function respondProject(project_id, response) {
   }
 }
 
-function handleNotificationClick(text) {
+function handleNotificationClick(text, type, projectId, el) {
   const msg = text.toLowerCase();
+  
+  // 1. Meeting Notifications
   if (msg.includes('meeting')) {
-    showSection('meetings', document.querySelector('.nav-item[onclick*="meetings"]'));
-  } else if (msg.includes('project')) {
-    showSection('project-work', document.querySelector('.nav-item[onclick*="project-work"]'));
-  } else if (msg.includes('leave')) {
-    showSection('leave-sec', document.querySelector('.nav-item[onclick*="leave-sec"]'));
+    window.location.href = '/meetings';
+    return;
+  }
+  
+  // 2. Leave Notifications
+  if (msg.includes('leave')) {
+    window.location.href = '/leave-request';
+    return;
+  }
+  
+  // 3. Project Notifications
+  if (msg.includes('project')) {
+    window.location.href = '/project-work';
+    return;
+  }
+  
+  // 4. Attendance & Late Notifications
+  if (msg.includes('late') || msg.includes('attendance') || msg.includes('clock in') || msg.includes('clock out')) {
+    window.location.href = '/attendance';
+    return;
+  }
+  
+  // 5. Employee Notifications
+  if (msg.includes('employee')) {
+    window.location.href = '/employees';
+    return;
+  }
+  
+  // Default fallback: expand project info if it's a project and hasn't navigated
+  if (projectId) {
+    const infoDiv = document.getElementById(`inline-project-${projectId}`);
+    if (infoDiv) {
+      infoDiv.classList.toggle('hidden');
+      if (!infoDiv.classList.contains('hidden')) {
+        if (typeof loadProjectDetailsInline === 'function') {
+          loadProjectDetailsInline(projectId);
+        }
+      }
+    }
   } else {
-    showSection('overview', document.querySelector('.nav-item[onclick*="overview"]'));
+    window.location.href = '/dashboard';
   }
 }
+
+
+

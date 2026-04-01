@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter_lucide/flutter_Icons.dart';
+import 'package:flutter_lucide/flutter_lucide.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../providers/theme_provider.dart';
@@ -118,7 +118,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
             child: Column(
               children: [
                 _buildNavBtn('attendance', Icons.assignment, 'Attendance'),
-                _buildNavBtn('employees', Icons.persons, 'Employees'),
+                _buildNavBtn('employees', LucideIcons.users, 'Employees'),
                 _buildNavBtn('meetings', Icons.calendar_today, 'Meetings'),
                 _buildNavBtn('leaves', Icons.description, 'Leaves',
                     badge: _leaveReqs.where((l) => l.status == 'Pending').length),
@@ -200,7 +200,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
           ),
           ElevatedButton.icon(
             onPressed: _showMeetingModal,
-            icon: const Icon(Icons.plus, size: 14),
+            icon: const Icon(LucideIcons.plus, size: 14),
             label: const Text('New Meeting'),
             style: ElevatedButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -215,13 +215,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
   Widget _buildStatCards() {
     return Row(
       children: [
-        _buildStatCard('Total Employees', _stats['total']?.toString() ?? '0', Icons.persons, AppColors.primary),
+        _buildStatCard('Total Employees', _stats['total']?.toString() ?? '0', LucideIcons.users, AppColors.primary),
         const SizedBox(width: 16),
-        _buildStatCard('Present Today', _stats['present']?.toString() ?? '0', Icons.person_round_check, AppColors.success),
+        _buildStatCard('Present Today', _stats['present']?.toString() ?? '0', LucideIcons.userRoundCheck, AppColors.success),
         const SizedBox(width: 16),
-        _buildStatCard('Absent Today', _stats['absent']?.toString() ?? '0', Icons.person_round_x, AppColors.danger),
+        _buildStatCard('Absent Today', _stats['absent']?.toString() ?? '0', LucideIcons.userRoundX, AppColors.danger),
         const SizedBox(width: 16),
-        _buildStatCard('Late Today', _stats['late']?.toString() ?? '0', Icons.alert_triangle, AppColors.warning),
+        _buildStatCard('Late Today', _stats['late']?.toString() ?? '0', LucideIcons.triangleAlert, AppColors.warning),
       ],
     );
   }
@@ -395,7 +395,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
   Widget _buildEmployeesTab() {
     return Column(
       children: [
-        _buildTabHeader(Icons.persons, 'All Employees (${_employees.length})'),
+        _buildTabHeader(LucideIcons.users, 'All Employees (${_employees.length})'),
         Card(
           child: Table(
             columnWidths: const {
@@ -491,7 +491,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                           child: Text('${m.date} · ${m.time}', style: const TextStyle(color: AppColors.success, fontSize: 10, fontWeight: FontWeight.bold)),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.x, size: 14, color: AppColors.danger),
+                          icon: const Icon(LucideIcons.x, size: 14, color: AppColors.danger),
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
                           onPressed: () async {
@@ -587,7 +587,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                         _fetchData();
                                       }),
                                   IconButton(
-                                      icon: const Icon(Icons.x, color: AppColors.danger, size: 16),
+                                      icon: const Icon(LucideIcons.x, color: AppColors.danger, size: 16),
                                       onPressed: () async {
                                         await ApiService.rejectLeave(l.id);
                                         _fetchData();

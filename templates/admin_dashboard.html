@@ -16,9 +16,11 @@
 <div class="admin-container">
   <!-- Sidebar Navigation -->
   <aside class="admin-sidebar">
-    <div class="sidebar-header">
-      <i data-lucide="shield-check" style="width:28px;height:28px;color:var(--primary-light)"></i>
-      <span>Admin<span>Panel</span></span>
+    <div style="padding:24px;border-bottom:1px solid var(--border);margin-bottom:10px">
+      <div style="display:flex;flex-direction:column;line-height:1.1">
+        <span style="font-size:1.8rem;font-weight:800;background:linear-gradient(135deg,#6366f1,#a855f7);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:1px">KOLOZEN</span>
+        <span style="font-size:0.75rem;color:var(--muted);font-weight:600;letter-spacing:0.5px">Face Attendance</span>
+      </div>
     </div>
     
     <nav class="sidebar-nav">
@@ -40,7 +42,7 @@
         <i data-lucide="bar-chart-2"></i><span>Analytics</span>
       </a>
       <a class="nav-btn {{ 'active' if active_tab == 'projects' else '' }}" href="/admin/projects">
-        <i data-lucide="bar-chart-2"></i><span>Project Assign</span>
+        <i data-lucide="briefcase"></i><span>Project Assign</span>
       </a>
       
       <div style="margin-top:auto;padding-top:24px;border-top:1px solid var(--border)">
@@ -65,9 +67,11 @@
           <input type="text" id="dashboard-search" oninput="searchDashboard(this.value)" placeholder="Search names, IDs, status...">
         </div>
         
+        {% if active_tab == 'meetings' %}
         <button onclick="showMeetingModal()" class="btn btn-primary btn-sm" style="height:40px;padding:0 16px;border-radius:10px">
           <i data-lucide="plus" style="width:16px;height:16px;margin-right:6px"></i>New Meeting
         </button>
+        {% endif %}
 
         <!-- Notifications -->
         <div class="dropdown-container">
@@ -125,28 +129,33 @@
         <!-- ROW 1: TOP KPI CARDS -->
         </div>
 
-        <div class="activity-grid" style="grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin-bottom: 24px;">
-          <!-- Upcoming Meetings Card (Clickable) -->
-          <div class="metric-card card-clickable" onclick="location.href='/admin/meetings'" style="cursor:pointer; border: 1px solid var(--primary-dim)">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px">
-              <h3 style="font-size:1rem;font-weight:700">Upcoming Meetings</h3>
-              <i data-lucide="external-link" style="width:16px;height:16px;color:var(--primary-light)"></i>
-            </div>
-            <div class="metric-value" style="font-size:1.8rem;margin-bottom:5px">{{ meetings|length }}</div>
-            <div class="metric-label">Scheduled Events</div>
-            <div style="margin-top:15px;font-size:0.75rem;color:var(--primary-light);font-weight:600">View all meetings →</div>
+        <div class="activity-grid" style="grid-template-columns: repeat(4, 1fr); gap: 24px; margin-bottom: 24px;">
+          <!-- Card 1: Total Employees -->
+          <div class="metric-card" onclick="location.href='/admin/employees'" style="cursor:pointer">
+            <div class="metric-icon" style="background:rgba(99,102,241,0.1);color:var(--primary-light)"><i data-lucide="users"></i></div>
+            <div class="metric-value">{{ stats.total }}</div>
+            <div class="metric-label">Total Employees</div>
           </div>
           
+          <!-- Card 2: Present Today -->
           <div class="metric-card">
-            <div class="metric-icon" style="background:rgba(139,92,246,0.1);color:var(--accent2)"><i data-lucide="activity"></i></div>
-            <div class="metric-value">Active</div>
-            <div class="metric-label">System Status</div>
+            <div class="metric-icon" style="background:rgba(16,185,129,0.1);color:var(--success)"><i data-lucide="user-check"></i></div>
+            <div class="metric-value">{{ stats.present }}</div>
+            <div class="metric-label">Present Today</div>
           </div>
 
+          <!-- Card 3: Late Today -->
           <div class="metric-card">
-            <div class="metric-icon" style="background:rgba(245,158,11,0.1);color:var(--warning)"><i data-lucide="zap"></i></div>
-            <div class="metric-value">98%</div>
-            <div class="metric-label">Efficiency</div>
+            <div class="metric-icon" style="background:rgba(245,158,11,0.1);color:var(--warning)"><i data-lucide="clock"></i></div>
+            <div class="metric-value">{{ stats.late }}</div>
+            <div class="metric-label">Late Today</div>
+          </div>
+
+          <!-- Card 4: Absent Today -->
+          <div class="metric-card">
+            <div class="metric-icon" style="background:rgba(239,68,68,0.1);color:var(--danger)"><i data-lucide="user-x"></i></div>
+            <div class="metric-value">{{ stats.absent }}</div>
+            <div class="metric-label">Absent Today</div>
           </div>
         </div>
 
@@ -192,59 +201,103 @@
       </div>
     {% elif current_tab == 'analytics' %}
       <div class="dashboard-content">
-        <!-- ROW 1: ANALYTICS Trend -->
-        <div class="metric-card" style="margin-bottom:24px; padding: 24px;">
-          <div class="flex-between mb-4">
-            <h3 style="font-size:1.1rem;font-weight:700">Total Attendance Trend</h3>
-            <div style="font-size:0.75rem;color:var(--text-dim)">Present vs Absent vs On Leave</div>
+        <!-- TOP: Today Live Status (Mini Cards) -->
+        <div class="metrics-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 32px;">
+          <div class="metric-card" style="border-left: 4px solid var(--success);">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <div class="metric-label">Working Now</div>
+                <div class="metric-value">{{ details.live_status.working_now }}</div>
+              </div>
+              <i data-lucide="clock" style="color:var(--success); width:32px; height:32px; opacity:0.8"></i>
+            </div>
           </div>
-          <div id="chart-org-trend" style="height:320px; width:100%"></div>
+          <div class="metric-card" style="border-left: 4px solid var(--primary);">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <div class="metric-label">Clocked Out</div>
+                <div class="metric-value">{{ details.live_status.clocked_out }}</div>
+              </div>
+              <i data-lucide="log-out" style="color:var(--primary); width:32px; height:32px; opacity:0.8"></i>
+            </div>
+          </div>
+          <div class="metric-card" style="border-left: 4px solid var(--danger);">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <div class="metric-label">Not Checked In</div>
+                <div class="metric-value">{{ details.live_status.not_logged }}</div>
+              </div>
+              <i data-lucide="user-minus" style="color:var(--danger); width:32px; height:32px; opacity:0.8"></i>
+            </div>
+          </div>
         </div>
 
-        <!-- ROW 2: SPLIT GRID - WEEKLY DATA -->
+        <!-- ROW 1: Breakdown & Monthly Trend -->
+        <div class="activity-grid" style="grid-template-columns: 1fr 2fr; gap: 24px; margin-bottom: 24px;">
+          <div class="metric-card" style="padding: 24px;">
+            <h3 style="font-size:1rem;font-weight:700;margin-bottom:16px">Attendance Breakdown</h3>
+            <div id="chart-att-dist" style="height:300px; width:100%"></div>
+          </div>
+          <div class="metric-card" style="padding: 24px;">
+            <h3 style="font-size:1rem;font-weight:700;margin-bottom:16px">Weekly Attendance (Present Employees)</h3>
+            <div id="chart-monthly-trend" style="height:300px; width:100%"></div>
+          </div>
+        </div>
+
+        <!-- ROW 2: Late Trend & Working Hours -->
         <div class="activity-grid" style="grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
           <div class="metric-card" style="padding: 24px;">
-            <h3 style="font-size:1rem;font-weight:700;margin-bottom:16px">Weekly Attendance</h3>
-            <div id="chart-weekly-att" style="height:250px; width:100%"></div>
+            <h3 style="font-size:1rem;font-weight:700;margin-bottom:16px">Weekly Late Arrivals</h3>
+            <div id="chart-late-trend" style="height:250px; width:100%"></div>
           </div>
           <div class="metric-card" style="padding: 24px;">
-            <h3 style="font-size:1rem;font-weight:700;margin-bottom:16px">Late Employees per Week</h3>
-            <div id="chart-weekly-late" style="height:250px; width:100%"></div>
+            <h3 style="font-size:1rem;font-weight:700;margin-bottom:16px">Total Working Hours (This Month)</h3>
+            <div id="chart-working-hours" style="height:250px; width:100%"></div>
           </div>
         </div>
 
-        <!-- ROW 3: SPLIT GRID - DISTRIBUTION -->
-        <div class="activity-grid" style="grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+        <!-- ROW 3: Leave Tracking & Top Lists -->
+        <div class="activity-grid" style="grid-template-columns: 1fr 1.5fr; gap: 24px;">
+          <!-- Leave Tracking -->
           <div class="metric-card" style="padding: 24px;">
-            <h3 style="font-size:1rem;font-weight:700;margin-bottom:16px">Leave Type Breakdown</h3>
-            <div id="chart-leave-donut" style="height:250px; width:100%"></div>
+            <h3 style="font-size:1rem;font-weight:700;margin-bottom:16px">Leave Distributions</h3>
+            <div id="chart-leave-bar" style="height:350px; width:100%"></div>
           </div>
-          <div class="metric-card" style="padding: 24px;">
-            <h3 style="font-size:1rem;font-weight:700;margin-bottom:16px">Attendance Distribution</h3>
-            <div id="chart-att-dist" style="height:250px; width:100%"></div>
-          </div>
-        </div>
-
-        <!-- ROW 4: TOP PERFORMERS TABLE -->
-        <div class="metric-card" style="margin-bottom:24px">
-          <div class="card-header" style="padding: 20px 24px; border-bottom: 1px solid var(--border)">
-            <h3 style="font-size:1.1rem;font-weight:700">Top Performers</h3>
-          </div>
-          <div style="overflow-x:auto">
-            <table class="table">
-              <thead><tr><th>Employee</th><th>ID</th><th>Attendance %</th><th>Late</th><th>Leaves</th></tr></thead>
-              <tbody>
-                {% for p in top_performers %}
-                <tr>
-                  <td><strong>{{ p.name }}</strong></td>
-                  <td><code>{{ p.id }}</code></td>
-                  <td>{{ p.pct }}%</td>
-                  <td>{{ p.late }}</td>
-                  <td>{{ p.leaves }}</td>
-                </tr>
+          
+          <!-- Performance Lists -->
+          <div style="display:flex; flex-direction:column; gap:24px;">
+            <!-- Top Present -->
+            <div class="metric-card" style="flex:1">
+              <div class="card-header" style="padding: 16px 20px; border-bottom: 1px solid var(--border)">
+                <h3 style="font-size:0.95rem;font-weight:700">Top Present Employees</h3>
+              </div>
+              <div style="padding: 12px">
+                {% for p in top_performers[:5] %}
+                <div style="display:flex; justify-content:space-between; align-items:center; padding: 10px; background:var(--surface2); border-radius:8px; margin-bottom:8px">
+                    <span style="font-weight:600">{{ p.name }}</span>
+                    <span class="badge badge-success">{{ p.pct }}% Attendance</span>
+                </div>
                 {% endfor %}
-              </tbody>
-            </table>
+              </div>
+            </div>
+            <!-- Frequent Late -->
+            <div class="metric-card" style="flex:1">
+              <div class="card-header" style="padding: 16px 20px; border-bottom: 1px solid var(--border); border-left: 3px solid var(--warning)">
+                <h3 style="font-size:0.95rem;font-weight:700">Frequent Late Employees</h3>
+              </div>
+              <div style="padding: 12px">
+                {% if details.frequent_late_analytics and details.frequent_late_analytics.labels %}
+                {% for i in range(details.frequent_late_analytics.labels|length) %}
+                <div style="display:flex; justify-content:space-between; align-items:center; padding: 10px; background:var(--surface2); border-radius:8px; margin-bottom:8px">
+                    <span style="font-weight:600">{{ details.frequent_late_analytics.labels[i] }}</span>
+                    <span class="badge badge-warning">{{ details.frequent_late_analytics.data[i] }} Times Late</span>
+                </div>
+                {% endfor %}
+                {% else %}
+                <p class="text-muted" style="text-align:center; padding:20px">No late data for this month.</p>
+                {% endif %}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -263,11 +316,10 @@
               <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Actions</th></tr></thead>
               <tbody id="emp-body">
                 {% for e in employees %}
-                <tr id="erow-{{ e.employee_id }}" class="row-clickable" onclick="location.href='/admin/employee/{{ e.employee_id }}'">
+                <tr id="erow-{{ e.employee_id }}" class="row-clickable" onclick="location.href='/admin/employee-profile/{{ e.employee_id }}'">
                   <td>{{ e.employee_id }}</td><td><strong>{{ e.name }}</strong></td><td>{{ e.email or '—' }}</td>
                   <td>
                     <div style="display:flex;gap:8px">
-                      <button onclick="showEmployeeModal(); event.stopPropagation();" class="btn btn-success btn-sm"><i data-lucide="user-plus" style="width:14px;height:14px;margin-right:4px"></i>Add</button>
                       <button onclick="deleteEmployee('{{ e.employee_id }}'); event.stopPropagation();" class="btn btn-danger btn-sm">Delete</button>
                     </div>
                   </td>
