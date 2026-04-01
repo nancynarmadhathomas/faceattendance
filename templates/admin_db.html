@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Database Viewer — KOLOZEN</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <style>
+        .db-layout {
+            display: grid;
+            grid-template-columns: 240px 1fr;
+            gap: 24px;
+            height: calc(100vh - 120px);
+        }
+        .db-sidebar {
+            background: var(--surface);
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .db-nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            border-radius: 10px;
+            color: var(--text-dim);
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .db-nav-item:hover {
+            background: rgba(255,255,255,0.05);
+            color: var(--text);
+        }
+        .db-nav-item.active {
+            background: var(--primary);
+            color: #fff;
+            box-shadow: 0 4px 12px rgba(99,102,241,0.3);
+        }
+        .db-content {
+            background: var(--surface);
+            border-radius: 16px;
+            border: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .db-header {
+            padding: 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .db-table-container {
+            flex: 1;
+            overflow: auto;
+            padding: 0;
+        }
+        .db-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+        .db-table th {
+            position: sticky;
+            top: 0;
+            background: #1a1a2e; /* Slightly darker than surface for header */
+            padding: 16px 20px;
+            text-align: left;
+            color: var(--text-dim);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-size: 0.75rem;
+            border-bottom: 1px solid var(--border);
+            z-index: 10;
+        }
+        .db-table td {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text);
+            white-space: nowrap;
+        }
+        .db-table tr:hover {
+            background: rgba(255,255,255,0.02);
+        }
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--text-dim);
+            gap: 16px;
+        }
+    </style>
+</head>
+<body class="dark-theme">
+
+<div class="admin-container">
+    <!-- Sidebar Navigation (Main) -->
+    <aside class="admin-sidebar">
+        <div style="padding:24px;border-bottom:1px solid var(--border);margin-bottom:10px">
+            <div style="display:flex;flex-direction:column;line-height:1.1">
+                <span style="font-size:1.8rem;font-weight:800;background:linear-gradient(135deg,#6366f1,#a855f7);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:1px">KOLOZEN</span>
+                <span style="font-size:0.75rem;color:var(--muted);font-weight:600;letter-spacing:0.5px">Face Attendance</span>
+            </div>
+        </div>
+        
+        <nav class="sidebar-nav">
+            <a href="/admin/attendance" class="nav-btn">
+                <i data-lucide="layout-dashboard"></i><span>Dashboard</span>
+            </a>
+            <a href="/admin/employees" class="nav-btn">
+                <i data-lucide="users"></i><span>Employees</span>
+            </a>
+            <a href="/admin/meetings" class="nav-btn">
+                <i data-lucide="calendar"></i><span>Meetings</span>
+            </a>
+            <a href="/admin/leaves" class="nav-btn">
+                <i data-lucide="file-text"></i><span>Leaves</span>
+            </a>
+            <a href="/admin/analytics" class="nav-btn">
+                <i data-lucide="bar-chart-2"></i><span>Analytics</span>
+            </a>
+            <a href="/admin/projects" class="nav-btn">
+                <i data-lucide="briefcase"></i><span>Project Assign</span>
+            </a>
+            <a href="/admin/db" class="nav-btn active">
+                <i data-lucide="database"></i><span>Database Viewer</span>
+            </a>
+            
+            <div style="margin-top:auto;padding-top:24px;border-top:1px solid var(--border)">
+                <a href="/logout" class="nav-btn" style="color:var(--danger)">
+                    <i data-lucide="log-out"></i><span>Logout</span>
+                </a>
+            </div>
+        </nav>
+    </aside>
+
+    <main class="admin-main">
+        <!-- Top Header -->
+        <header class="premium-header">
+            <div class="header-welcome">
+                <h1>Database Viewer</h1>
+                <p>Advanced system inspection & raw data access (Read-Only)</p>
+            </div>
+            
+            <div class="header-controls">
+                <div id="theme-toggle" class="control-icon"><i data-lucide="moon"></i></div>
+                <div class="user-profile-toggle">
+                    <div class="avatar">{{ admin_info.name[0] if admin_info else 'A' }}</div>
+                </div>
+            </div>
+        </header>
+
+        <!-- DB Layout -->
+        <div class="db-layout">
+            <!-- Table List Sidebar -->
+            <div class="db-sidebar">
+                <div style="font-size:0.75rem;font-weight:700;color:var(--text-dim);text-transform:uppercase;margin-bottom:12px;letter-spacing:1px">System Tables</div>
+                <a href="/admin/db/users" class="db-nav-item {{ 'active' if table_name == 'users' else '' }}">
+                    <i data-lucide="users" style="width:18px;height:18px"></i><span>users</span>
+                </a>
+                <a href="/admin/db/attendance" class="db-nav-item {{ 'active' if table_name == 'attendance' else '' }}">
+                    <i data-lucide="clock" style="width:18px;height:18px"></i><span>attendance</span>
+                </a>
+                <a href="/admin/db/leaves" class="db-nav-item {{ 'active' if table_name == 'leaves' else '' }}">
+                    <i data-lucide="file-minus" style="width:18px;height:18px"></i><span>leaves</span>
+                </a>
+                <a href="/admin/db/meetings" class="db-nav-item {{ 'active' if table_name == 'meetings' else '' }}">
+                    <i data-lucide="video" style="width:18px;height:18px"></i><span>meetings</span>
+                </a>
+                <a href="/admin/db/projects" class="db-nav-item {{ 'active' if table_name == 'projects' else '' }}">
+                    <i data-lucide="folder-kanban" style="width:18px;height:18px"></i><span>projects</span>
+                </a>
+                <a href="/admin/db/notifications" class="db-nav-item {{ 'active' if table_name == 'notifications' else '' }}">
+                    <i data-lucide="bell" style="width:18px;height:18px"></i><span>notifications</span>
+                </a>
+            </div>
+
+            <!-- Table Data View -->
+            <div class="db-content">
+                <div class="db-header">
+                    <div style="display:flex;align-items:center;gap:12px">
+                        <div style="width:40px;height:40px;background:rgba(99,102,241,0.1);border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--primary)">
+                            <i data-lucide="table"></i>
+                        </div>
+                        <div>
+                            <div style="font-size:1.1rem;font-weight:700">{{ table_name }}</div>
+                            <div style="font-size:0.75rem;color:var(--text-dim)">Viewing {{ data|length }} records found in database</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="db-table-container">
+                    {% if data %}
+                    <table class="db-table">
+                        <thead>
+                            <tr>
+                                {% for col in columns %}
+                                <th>{{ col }}</th>
+                                {% endfor %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in data %}
+                            <tr>
+                                {% for col in columns %}
+                                <td>{{ row[col] }}</td>
+                                {% endfor %}
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <div class="empty-state">
+                        <i data-lucide="alert-circle" style="width:48px;height:48px;opacity:0.3"></i>
+                        <p>No records found in table '{{ table_name }}'</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<script>
+    lucide.createIcons();
+    
+    // Simple theme toggle if needed (matching main dashboard)
+    document.getElementById('theme-toggle').onclick = function() {
+        document.body.classList.toggle('dark-theme');
+        const icon = this.querySelector('i');
+        if (document.body.classList.contains('dark-theme')) {
+            icon.setAttribute('data-lucide', 'moon');
+        } else {
+            icon.setAttribute('data-lucide', 'sun');
+        }
+        lucide.createIcons();
+    };
+</script>
+
+</body>
+</html>

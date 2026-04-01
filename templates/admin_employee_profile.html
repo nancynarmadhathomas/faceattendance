@@ -50,7 +50,7 @@
                     <div class="info-list">
                         <div class="info-item">
                             <i data-lucide="hash"></i>
-                            <div><label>Employee ID</label><span>{{ emp.employee_id }}</span></div>
+                            <div><label>Employee ID</label><span>{{ emp.user_id }}</span></div>
                         </div>
                         <div class="info-item">
                             <i data-lucide="mail"></i>
@@ -167,10 +167,10 @@
                 <div class="metric-card actions-card">
                     <h3 class="card-title">Profile Actions</h3>
                     <div class="action-buttons-grid">
-                        <button onclick="showEditModal('{{ emp.employee_id }}')" class="btn btn-primary">
+                        <button onclick="showEditModal('{{ emp.user_id }}')" class="btn btn-primary">
                             <i data-lucide="edit"></i> Edit Employee
                         </button>
-                        <button onclick="deleteEmployee('{{ emp.employee_id }}')" class="btn btn-danger">
+                        <button onclick="deleteEmployee('{{ emp.user_id }}')" class="btn btn-danger">
                             <i data-lucide="trash-2"></i> Delete Employee
                         </button>
                     </div>

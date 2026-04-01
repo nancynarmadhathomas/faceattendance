@@ -19,23 +19,24 @@ def init_db():
     conn = get_conn()
     c = conn.cursor()
     
+    # Core Schema Definitions
     tables = [
         """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='users' and xtype='U')
            CREATE TABLE users (
-               id INT IDENTITY(1,1) PRIMARY KEY,
-               employee_id VARCHAR(50) UNIQUE NOT NULL,
+               user_id VARCHAR(50) PRIMARY KEY,
                name NVARCHAR(100) NOT NULL,
                email VARCHAR(100),
+               department NVARCHAR(100),
                role VARCHAR(20) DEFAULT 'employee',
                password VARCHAR(255),
                face_embedding VARCHAR(MAX),
                face_image VARBINARY(MAX),
+               title NVARCHAR(20) DEFAULT '',
                created_at DATETIME DEFAULT GETDATE()
            )""",
         """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='attendance' and xtype='U')
            CREATE TABLE attendance (
-               id INT IDENTITY(1,1) PRIMARY KEY,
-               employee_id VARCHAR(50) NOT NULL,
+               user_id VARCHAR(50) NOT NULL,
                date DATE NOT NULL,
                check_in DATETIME,
                check_out DATETIME,
@@ -45,19 +46,17 @@ def init_db():
            )""",
         """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='meetings' and xtype='U')
            CREATE TABLE meetings (
-               id INT IDENTITY(1,1) PRIMARY KEY,
                title NVARCHAR(255) NOT NULL,
                description NVARCHAR(MAX),
                meeting_date DATE NOT NULL,
                meeting_time VARCHAR(10) NOT NULL,
-               employee_id VARCHAR(50),
+               user_id VARCHAR(50),
                created_by VARCHAR(50) DEFAULT 'admin',
                created_at DATETIME DEFAULT GETDATE()
            )""",
         """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='leave_requests' and xtype='U')
            CREATE TABLE leave_requests (
-               id INT IDENTITY(1,1) PRIMARY KEY,
-               employee_id VARCHAR(50) NOT NULL,
+               user_id VARCHAR(50) NOT NULL,
                leave_type VARCHAR(100) NOT NULL,
                from_date DATE NOT NULL,
                to_date DATE NOT NULL,
@@ -67,29 +66,27 @@ def init_db():
            )""",
         """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='login_logs' and xtype='U')
            CREATE TABLE login_logs (
-               id INT IDENTITY(1,1) PRIMARY KEY,
-               employee_id VARCHAR(50) NOT NULL,
+               user_id VARCHAR(50) NOT NULL,
                login_time DATETIME DEFAULT GETDATE(),
                date DATE DEFAULT CAST(GETDATE() AS DATE)
            )""",
         """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='notifications' and xtype='U')
            CREATE TABLE notifications (
-               id INT IDENTITY(1,1) PRIMARY KEY,
-               employee_id VARCHAR(50) NOT NULL,
+               user_id VARCHAR(50) NOT NULL,
                message NVARCHAR(MAX) NOT NULL,
+               type VARCHAR(20) DEFAULT 'info',
+               project_id INT,
                is_read BIT DEFAULT 0,
                created_at DATETIME DEFAULT GETDATE()
            )""",
         """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='meeting_responses' and xtype='U')
            CREATE TABLE meeting_responses (
-               id INT IDENTITY(1,1) PRIMARY KEY,
                meeting_id INT NOT NULL,
-               employee_id VARCHAR(50) NOT NULL,
+               user_id VARCHAR(50) NOT NULL,
                status VARCHAR(20) NOT NULL,
                reason NVARCHAR(MAX),
                created_at DATETIME DEFAULT GETDATE()
            )""",
-        # NEW PROJECT TABLES
         """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='projects' and xtype='U')
            CREATE TABLE projects (
                id INT IDENTITY(1,1) PRIMARY KEY,
@@ -101,75 +98,39 @@ def init_db():
            )""",
         """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='project_interest' and xtype='U')
            CREATE TABLE project_interest (
-               id INT IDENTITY(1,1) PRIMARY KEY,
                project_id INT NOT NULL,
-               employee_id VARCHAR(50) NOT NULL,
-               status VARCHAR(20) DEFAULT 'pending', -- pending, interested, not_interested
+               user_id VARCHAR(50) NOT NULL,
+               status VARCHAR(20) DEFAULT 'pending', 
                created_at DATETIME DEFAULT GETDATE()
            )"""
     ]
     for stmt in tables:
         c.execute(stmt)
+
+    # --- AUTOMATIC MIGRATION: Rename employee_id to user_id if present ---
+    # This block ensures that old tables are automatically updated.
+    target_tables = ['users', 'attendance', 'meetings', 'leave_requests', 'login_logs', 
+                     'notifications', 'meeting_responses', 'project_interest']
+    for table in target_tables:
+        try:
+            # Check if employee_id column exists
+            c.execute(f"SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('{table}') AND name = 'employee_id'")
+            if c.fetchone():
+                print(f"Migrating table {table}: Renaming employee_id to user_id...")
+                c.execute(f"EXEC sp_rename '{table}.employee_id', 'user_id', 'COLUMN'")
+                conn.commit()
+        except Exception as e:
+            print(f"Migration error on {table}: {e}")
+
         
-    # Ensure late_reason and employee_name columns exist in attendance table
-    try:
-        c.execute("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('attendance') AND name = 'late_reason') ALTER TABLE attendance ADD late_reason NVARCHAR(255)")
-        c.execute("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('attendance') AND name = 'employee_name') ALTER TABLE attendance ADD employee_name NVARCHAR(100)")
-    except Exception:
-        pass
 
-    # Ensure meetings table has employee_id column (FIX for 500 error)
-    try:
-        c.execute("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('meetings') AND name = 'employee_id') ALTER TABLE meetings ADD employee_id VARCHAR(50)")
-    except Exception:
-        pass
 
-    # Ensure users table has title column
-    try:
-        c.execute("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('users') AND name = 'title') ALTER TABLE users ADD title NVARCHAR(20) DEFAULT ''")
-    except Exception:
-        pass
 
-    for col in [
-        ('employee_id', 'VARCHAR(50)'),
-        ('recipient_id', 'VARCHAR(50)'),
-        ('message', 'NVARCHAR(MAX) NOT NULL DEFAULT \'\''),
-        ('type', 'VARCHAR(20) DEFAULT \'info\''),
-        ('project_id', 'INT'),
-        ('is_read', 'BIT DEFAULT 0'),
-        ('created_at', 'DATETIME DEFAULT GETDATE()')
-    ]:
-        try:
-            # We add as nullable first to avoid issues with existing data
-            c.execute(f"IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('notifications') AND name = '{col[0]}') ALTER TABLE notifications ADD {col[0]} {col[1]}")
-        except Exception: pass
-
-    # Ensure meeting_responses table has all columns
-    for col in [
-        ('meeting_id', 'INT NOT NULL DEFAULT 0'),
-        ('employee_id', 'VARCHAR(50) NOT NULL DEFAULT \'\''),
-        ('status', 'VARCHAR(20) NOT NULL DEFAULT \'\''),
-        ('reason', 'NVARCHAR(MAX)'),
-        ('created_at', 'DATETIME DEFAULT GETDATE()')
-    ]:
-        try:
-            c.execute(f"IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('meeting_responses') AND name = '{col[0]}') ALTER TABLE meeting_responses ADD {col[0]} {col[1]}")
-        except Exception: pass
-
-    # Ensure projects table migration (Safe check)
-    for col in [
-        ('members_wanted', 'INT DEFAULT 1'),
-        ('deadline', 'DATE'),
-        ('created_by', 'VARCHAR(50)'),
-        ('created_at', 'DATETIME DEFAULT GETDATE()')
-    ]:
-        try:
-            c.execute(f"IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('projects') AND name = '{col[0]}') ALTER TABLE projects ADD {col[0]} {col[1]}")
-        except Exception: pass
-
-    c.execute("SELECT id FROM users WHERE employee_id='admin'")
+    # Check admin existence
+    c.execute("SELECT user_id FROM users WHERE user_id='admin'")
     if not c.fetchone():
-        c.execute("INSERT INTO users (employee_id, name, role, password) VALUES ('admin', 'System Admin', 'admin', 'admin123')")
+        c.execute("INSERT INTO users (user_id, name, role, password) VALUES ('admin', 'System Admin', 'admin', 'admin123')")
+    
     conn.commit()
     conn.close()
 
@@ -224,15 +185,15 @@ def fmt_date(val):
 def get_all_employees():
     conn = get_conn()
     c = conn.cursor()
-    c.execute("SELECT employee_id, name, email, role, title, created_at FROM users ORDER BY name")
+    c.execute("SELECT user_id, name, email, role, title, created_at FROM users ORDER BY name")
     rows = _rows_to_dicts(c, c.fetchall())
     conn.close()
     return rows
 
-def get_employee(employee_id):
+def get_employee(user_id):
     conn = get_conn()
     c = conn.cursor()
-    c.execute("SELECT * FROM users WHERE employee_id=?", (employee_id,))
+    c.execute("SELECT * FROM users WHERE user_id=?", (user_id,))
     row = _row_to_dict(c, c.fetchone())
     conn.close()
     return row
@@ -241,9 +202,9 @@ def register_employee(data):
     conn = get_conn()
     c = conn.cursor()
     c.execute("""
-        INSERT INTO users (employee_id, name, email, role, title, password, face_embedding, face_image)
+        INSERT INTO users (user_id, name, email, role, title, password, face_embedding, face_image)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (data['employee_id'], data['name'], data['email'],
+    """, (data['user_id'], data['name'], data['email'],
           data.get('role', 'employee'), data.get('title', ''), data['password'],
           data['face_embedding'], data['face_image']))
     conn.commit()
@@ -252,65 +213,64 @@ def register_employee(data):
 def get_all_embeddings():
     conn = get_conn()
     c = conn.cursor()
-    c.execute("SELECT employee_id, name, face_embedding FROM users WHERE face_embedding IS NOT NULL")
+    c.execute("SELECT user_id, name, face_embedding FROM users WHERE face_embedding IS NOT NULL")
     rows = _rows_to_dicts(c, c.fetchall())
     conn.close()
     return rows
 
-def delete_employee(employee_id):
+def delete_employee(user_id):
     conn = get_conn()
     c = conn.cursor()
-    c.execute("DELETE FROM users WHERE employee_id=?", (employee_id,))
-    c.execute("DELETE FROM attendance WHERE employee_id=?", (employee_id,))
+    c.execute("DELETE FROM users WHERE user_id=?", (user_id,))
+    c.execute("DELETE FROM attendance WHERE user_id=?", (user_id,))
     conn.commit()
     conn.close()
 
 # --- Login Logs ---
-def log_login_event(employee_id):
+def log_login_event(user_id):
     conn = get_conn()
     c = conn.cursor()
-    c.execute("INSERT INTO login_logs (employee_id) VALUES (?)", (employee_id,))
+    c.execute("INSERT INTO login_logs (user_id) VALUES (?)", (user_id,))
     conn.commit()
     conn.close()
 
 # --- Attendance ---
-def get_today_record(employee_id):
+def get_today_record(user_id):
     conn = get_conn()
     c = conn.cursor()
     c.execute("""SELECT TOP 1 * FROM attendance 
-                 WHERE employee_id=? AND date = CAST(GETDATE() AS DATE)
-                 ORDER BY id DESC""", (employee_id,))
+                 WHERE user_id=? AND date = CAST(GETDATE() AS DATE)
+                 ORDER BY id DESC""", (user_id,))
     row = _row_to_dict(c, c.fetchone())
     conn.close()
     return row
 
-def log_checkin(employee_id, status='Present', late_reason=None):
+def log_checkin(user_id, status='Present', late_reason=None):
     conn = get_conn()
     c = conn.cursor()
     now = datetime.now()
     
     # Fetch employee name first
-    c.execute("SELECT name FROM users WHERE employee_id=?", (employee_id,))
+    c.execute("SELECT name FROM users WHERE user_id=?", (user_id,))
     res = c.fetchone()
     emp_name = res[0] if res else 'Unknown'
 
-    c.execute("SELECT id FROM attendance WHERE employee_id=? AND date = CAST(GETDATE() AS DATE)", (employee_id,))
+    c.execute("SELECT check_in FROM attendance WHERE user_id=? AND date = CAST(GETDATE() AS DATE)", (user_id,))
     if not c.fetchone():
-        c.execute("""INSERT INTO attendance (employee_id, employee_name, date, check_in, status, late_reason)
-                     VALUES (?, ?, CAST(GETDATE() AS DATE), ?, ?, ?)""", (employee_id, emp_name, now, status, late_reason))
+        c.execute("""INSERT INTO attendance (user_id, employee_name, date, check_in, status, late_reason)
+                     VALUES (?, ?, CAST(GETDATE() AS DATE), ?, ?, ?)""", (user_id, emp_name, now, status, late_reason))
     conn.commit()
     conn.close()
 
-def log_checkout(employee_id):
+def log_checkout(user_id):
     conn = get_conn()
     c = conn.cursor()
     now_dt = datetime.now()
-    c.execute("SELECT TOP 1 id, check_in FROM attendance WHERE employee_id=? AND date = CAST(GETDATE() AS DATE) AND check_out IS NULL ORDER BY id DESC",
-              (employee_id,))
+    c.execute("SELECT check_in FROM attendance WHERE user_id=? AND date = CAST(GETDATE() AS DATE) AND check_out IS NULL",
+              (user_id,))
     row = c.fetchone()
     if row:
-        row_id = row[0]
-        check_in_raw = row[1]
+        check_in_raw = row[0]
         
         if isinstance(check_in_raw, str):
             try:
@@ -321,26 +281,26 @@ def log_checkout(employee_id):
             check_in_dt = check_in_raw
             
         hours = round((now_dt - check_in_dt).total_seconds() / 3600, 2)
-        c.execute("UPDATE attendance SET check_out=?, working_hours=? WHERE id=?",
-                  (now_dt, hours, row_id))
+        c.execute("UPDATE attendance SET check_out=?, working_hours=? WHERE user_id=? AND date=CAST(GETDATE() AS DATE)",
+                  (now_dt, hours, user_id))
         conn.commit()
         conn.close()
         return hours
     conn.close()
     return 0
 
-def update_late_reason(employee_id, reason):
+def update_late_reason(user_id, reason):
     conn = get_conn()
     c = conn.cursor()
-    c.execute("UPDATE attendance SET late_reason=? WHERE employee_id=? AND date = CAST(GETDATE() AS DATE)",
-              (reason, employee_id))
+    c.execute("UPDATE attendance SET late_reason=? WHERE user_id=? AND date = CAST(GETDATE() AS DATE)",
+              (reason, user_id))
     conn.commit()
     conn.close()
 
-def get_attendance_history(employee_id, limit=30):
+def get_attendance_history(user_id, limit=30):
     conn = get_conn()
     c = conn.cursor()
-    c.execute(f"SELECT TOP {limit} * FROM attendance WHERE employee_id=? ORDER BY date DESC", (employee_id,))
+    c.execute(f"SELECT TOP {limit} * FROM attendance WHERE user_id=? ORDER BY date DESC", (user_id,))
     rows = _rows_to_dicts(c, c.fetchall())
     conn.close()
     return rows
@@ -349,10 +309,10 @@ def get_today_attendance():
     conn = get_conn()
     c = conn.cursor()
     c.execute("""
-        SELECT u.employee_id, u.name,
+        SELECT u.user_id, u.name,
                a.check_in, a.check_out, a.status, a.working_hours
         FROM users u
-        LEFT JOIN attendance a ON u.employee_id = a.employee_id AND a.date = CAST(GETDATE() AS DATE)
+        LEFT JOIN attendance a ON u.user_id = a.user_id AND a.date = CAST(GETDATE() AS DATE)
         ORDER BY u.name
     """)
     rows = _rows_to_dicts(c, c.fetchall())
@@ -363,9 +323,9 @@ def get_recent_attendance(limit=10):
     conn = get_conn()
     c = conn.cursor()
     c.execute(f"""
-        SELECT TOP {limit} u.name, a.id, a.date, a.check_in, a.check_out, a.working_hours, a.status
+        SELECT TOP {limit} u.name, a.date, a.check_in, a.check_out, a.working_hours, a.status
         FROM attendance a
-        JOIN users u ON a.employee_id = u.employee_id
+        JOIN users u ON a.user_id = u.user_id
         ORDER BY a.date DESC, a.check_in DESC
     """)
     rows = _rows_to_dicts(c, c.fetchall())
@@ -415,27 +375,27 @@ def get_stats():
 def create_meeting(data):
     conn = get_conn()
     c = conn.cursor()
-    c.execute("""INSERT INTO meetings (title, description, meeting_date, meeting_time, employee_id, created_by)
+    c.execute("""INSERT INTO meetings (title, description, meeting_date, meeting_time, user_id, created_by)
                  VALUES (?, ?, ?, ?, ?, ?)""",
               (data['title'], data['description'], data['date'],
-               data['time'], data.get('employee_id'), data.get('created_by', 'admin')))
+               data['time'], data.get('user_id'), data.get('created_by', 'admin')))
     conn.commit()
     conn.close()
 
-def get_meetings_for_employee(employee_id):
+def get_meetings_for_employee(user_id):
     conn = get_conn()
     c = conn.cursor()
     today = date.today().isoformat()
     # Use case-insensitive match for the ID
     c.execute("""SELECT * FROM meetings
                  WHERE meeting_date >= ?
-                 AND (employee_id IS NULL OR LOWER(employee_id) = LOWER(?))
-                 ORDER BY meeting_date, meeting_time""", (today, employee_id))
+                 AND (user_id IS NULL OR LOWER(user_id) = LOWER(?))
+                 ORDER BY meeting_date, meeting_time""", (today, user_id))
     rows = _rows_to_dicts(c, c.fetchall())
     
     # Also fetch the response status for each meeting
     for r in rows:
-        c.execute("SELECT status, reason FROM meeting_responses WHERE meeting_id=? AND employee_id=?", (r['id'], employee_id))
+        c.execute("SELECT status, reason FROM meeting_responses WHERE meeting_id=? AND user_id=?", (r['id'], user_id))
         res = c.fetchone()
         if res:
             r['response_status'] = res[0]
@@ -446,13 +406,13 @@ def get_meetings_for_employee(employee_id):
     conn.close()
     return rows
 
-def save_meeting_response(meeting_id, employee_id, status, reason=None):
+def save_meeting_response(meeting_id, user_id, status, reason=None):
     conn = get_conn()
     c = conn.cursor()
     # Remove existing response if any
-    c.execute("DELETE FROM meeting_responses WHERE meeting_id=? AND employee_id=?", (meeting_id, employee_id))
-    c.execute("""INSERT INTO meeting_responses (meeting_id, employee_id, status, reason)
-                 VALUES (?, ?, ?, ?)""", (meeting_id, employee_id, status, reason))
+    c.execute("DELETE FROM meeting_responses WHERE meeting_id=? AND user_id=?", (meeting_id, user_id))
+    c.execute("""INSERT INTO meeting_responses (meeting_id, user_id, status, reason)
+                 VALUES (?, ?, ?, ?)""", (meeting_id, user_id, status, reason))
     conn.commit()
     conn.close()
 
@@ -464,10 +424,10 @@ def get_all_meetings():
     conn.close()
     return rows
 
-def delete_meeting(meeting_id):
+def delete_meeting(title, meeting_date, user_id):
     conn = get_conn()
     c = conn.cursor()
-    c.execute("DELETE FROM meetings WHERE id=?", (meeting_id,))
+    c.execute("DELETE FROM meetings WHERE title=? AND meeting_date=? AND user_id=?", (title, meeting_date, user_id))
     conn.commit()
     conn.close()
 
@@ -482,16 +442,16 @@ def create_leave_request(data):
         pass
     conn = get_conn()
     c = conn.cursor()
-    c.execute("""INSERT INTO leave_requests (employee_id, leave_type, from_date, to_date, reason)
+    c.execute("""INSERT INTO leave_requests (user_id, leave_type, from_date, to_date, reason)
                  VALUES (?, ?, ?, ?, ?)""",
-              (data['employee_id'], data['leave_type'], from_str, to_str, data.get('reason', '')))
+              (data['user_id'], data['leave_type'], from_str, to_str, data.get('reason', '')))
     conn.commit()
     conn.close()
 
-def get_leave_requests_by_employee(employee_id):
+def get_leave_requests_by_employee(user_id):
     conn = get_conn()
     c = conn.cursor()
-    c.execute("SELECT * FROM leave_requests WHERE employee_id=? ORDER BY created_at DESC", (employee_id,))
+    c.execute("SELECT * FROM leave_requests WHERE user_id=? ORDER BY created_at DESC", (user_id,))
     rows = _rows_to_dicts(c, c.fetchall())
     conn.close()
     return rows
@@ -501,29 +461,29 @@ def get_all_leave_requests():
     c = conn.cursor()
     c.execute("""SELECT lr.*, u.name as employee_name
                  FROM leave_requests lr
-                 LEFT JOIN users u ON lr.employee_id = u.employee_id
+                 LEFT JOIN users u ON lr.user_id = u.user_id
                  ORDER BY lr.created_at DESC""")
     rows = _rows_to_dicts(c, c.fetchall())
     conn.close()
     return rows
 
-def update_leave_status(leave_id, status):
+def update_leave_status(user_id, from_date, status):
     conn = get_conn()
     c = conn.cursor()
-    c.execute("UPDATE leave_requests SET status=? WHERE id=?", (status, leave_id))
+    c.execute("UPDATE leave_requests SET status=? WHERE user_id=? AND from_date=?", (status, user_id, from_date))
     conn.commit()
     conn.close()
 
 # --- Aggregates ---
-def get_monthly_stats(employee_id):
+def get_monthly_stats(user_id):
     conn = get_conn()
     c = conn.cursor()
     today = date.today()
     month_start = today.replace(day=1).isoformat()
     month_end   = today.isoformat()
     c.execute("""SELECT status, COUNT(*) as cnt FROM attendance
-                 WHERE employee_id=? AND date>=? AND date<=?
-                 GROUP BY status""", (employee_id, month_start, month_end))
+                 WHERE user_id=? AND date>=? AND date<=?
+                 GROUP BY status""", (user_id, month_start, month_end))
     rows = _rows_to_dicts(c, c.fetchall())
     conn.close()
     stats = {'present': 0, 'late': 0, 'absent': 0}
@@ -535,51 +495,50 @@ def get_monthly_stats(employee_id):
     stats['pct'] = round(attended / total_days * 100) if total_days else 0
     return stats
 
-def get_leave_balance(employee_id):
+def get_leave_balance(user_id):
     LIMITS = {'Casual Leave': 12, 'Sick Leave': 10, 'Permission': 6, 'Half Day': 6, 'Work From Home': 20}
     conn = get_conn()
     c = conn.cursor()
-    c.execute("SELECT leave_type, COUNT(*) as cnt FROM leave_requests WHERE employee_id=? AND status='Approved' GROUP BY leave_type", (employee_id,))
+    c.execute("SELECT leave_type, COUNT(*) as cnt FROM leave_requests WHERE user_id=? AND status='Approved' GROUP BY leave_type", (user_id,))
     rows = _rows_to_dicts(c, c.fetchall())
     conn.close()
     used = {r.get('leave_type', ''): r.get('cnt', 0) for r in rows}
     balance = {lt: {'limit': limit, 'used': used.get(lt, 0), 'remaining': limit - used.get(lt, 0)} for lt, limit in LIMITS.items()}
     return balance
 
-def get_upcoming_meetings(employee_id):
+def get_upcoming_meetings(user_id):
     conn = get_conn()
     c = conn.cursor()
     today = date.today().isoformat()
     c.execute("""SELECT TOP 5 * FROM meetings
-                 WHERE meeting_date >= ? AND (employee_id IS NULL OR employee_id = ?)
-                 ORDER BY meeting_date ASC, meeting_time ASC""", (today, employee_id))
+                 WHERE meeting_date >= ? AND (user_id IS NULL OR user_id = ?)
+                 ORDER BY meeting_date ASC, meeting_time ASC""", (today, user_id))
     rows = _rows_to_dicts(c, c.fetchall())
     conn.close()
     return rows
 
-def get_notifications(employee_id):
+def get_notifications(user_id):
     conn = get_conn()
     c = conn.cursor()
     # Fetch Notifications from the new table
-    c.execute("SELECT TOP 10 * FROM notifications WHERE employee_id=? ORDER BY created_at DESC", (employee_id,))
+    c.execute("SELECT TOP 10 * FROM notifications WHERE user_id=? ORDER BY created_at DESC", (user_id,))
     notes = _rows_to_dicts(c, c.fetchall())
     
     # Optional: include Pending Leave requests for Admin as notifications
-    if employee_id == 'admin':
-        c.execute("""SELECT lr.id, lr.employee_id, u.name, lr.leave_type, lr.created_at
+    if user_id == 'admin':
+        c.execute("""SELECT lr.user_id, u.name, lr.leave_type, lr.created_at
                      FROM leave_requests lr
-                     JOIN users u ON lr.employee_id = u.employee_id
+                     JOIN users u ON lr.user_id = u.user_id
                      WHERE lr.status='Pending'
                      ORDER BY lr.created_at DESC""")
         pending = c.fetchall()
         for p in pending:
             notes.append({
-                'id': f"leave-{p[0]}",
                 'type': 'leave_request',
-                'employee_id': p[1],
-                'name': p[2],
-                'message': f"{p[2]} requested leave ({p[3]})",
-                'created_at': p[4].isoformat() if hasattr(p[4], 'isoformat') else str(p[4])
+                'user_id': p[0],
+                'name': p[1],
+                'message': f"{p[1]} requested leave ({p[2]})",
+                'created_at': p[3].isoformat() if hasattr(p[3], 'isoformat') else str(p[3])
             })
     conn.close()
     return notes
@@ -587,29 +546,20 @@ def get_notifications(employee_id):
 def add_notification(recipient_id, message, type='info', project_id=None):
     conn = get_conn()
     c = conn.cursor()
-    # Support both column names for maximum compatibility
-    try:
-        c.execute("INSERT INTO notifications (employee_id, recipient_id, message, type, project_id) VALUES (?, ?, ?, ?, ?)", 
-                  (recipient_id, recipient_id, message, type, project_id))
-    except Exception:
-        # Fallback if specific columns are missing
-        try:
-            c.execute("INSERT INTO notifications (employee_id, message, type, project_id) VALUES (?, ?, ?, ?)", 
-                      (recipient_id, message, type, project_id))
-        except Exception:
-            c.execute("INSERT INTO notifications (recipient_id, message) VALUES (?, ?)", (recipient_id, message))
+    c.execute("INSERT INTO notifications (user_id, message, type, project_id) VALUES (?, ?, ?, ?)", 
+               (recipient_id, message, type, project_id))
     conn.commit()
     conn.close()
 
-def get_project_details(project_id, employee_id):
+def get_project_details(project_id, user_id):
     conn = get_conn()
     c = conn.cursor()
     c.execute("""
         SELECT p.*, pi.status as user_status
         FROM projects p
-        LEFT JOIN project_interest pi ON p.id = pi.project_id AND pi.employee_id = ?
+        LEFT JOIN project_interest pi ON p.id = pi.project_id AND pi.user_id = ?
         WHERE p.id = ?
-    """, (employee_id, project_id))
+    """, (user_id, project_id))
     row = c.fetchone()
     if row:
         columns = [column[0] for column in c.description]
@@ -726,13 +676,13 @@ def get_top_performers(limit=5):
     
     # Simple algorithm: Sort by presence count, then by late count (inverse)
     c.execute("""
-        SELECT u.employee_id, u.name, 
-               COUNT(a.id) as days_present,
+        SELECT u.user_id, u.name, 
+               COUNT(*) as days_present,
                SUM(CASE WHEN a.status='Late' THEN 1 ELSE 0 END) as late_count
         FROM users u
-        LEFT JOIN attendance a ON u.employee_id = a.employee_id AND a.date >= ? AND a.status IN ('Present', 'Late')
+        LEFT JOIN attendance a ON u.user_id = a.user_id AND a.date >= ? AND a.status IN ('Present', 'Late')
         WHERE u.role != 'admin'
-        GROUP BY u.employee_id, u.name
+        GROUP BY u.user_id, u.name
         ORDER BY days_present DESC, late_count ASC
     """, (month_start,))
     
@@ -741,15 +691,15 @@ def get_top_performers(limit=5):
     total_working_days = today.day
     
     for r in rows[:limit]:
-        emp_id, name, pres_count, late_count = r
+        uid, name, pres_count, late_count = r
         # Get leave count for this month
-        c.execute("SELECT COUNT(*) FROM leave_requests WHERE employee_id=? AND status='Approved' AND from_date>=?", (emp_id, month_start))
+        c.execute("SELECT COUNT(*) FROM leave_requests WHERE user_id=? AND status='Approved' AND from_date>=?", (uid, month_start))
         leave_count = c.fetchone()[0] or 0
         
         pct = round((pres_count / total_working_days * 100)) if total_working_days > 0 else 0
         performers.append({
             'name': name,
-            'id': emp_id,
+            'id': uid,
             'pct': pct,
             'late': late_count,
             'leaves': leave_count
@@ -758,7 +708,7 @@ def get_top_performers(limit=5):
     conn.close()
     return performers
 
-def get_employee_analytics(employee_id):
+def get_employee_analytics(user_id):
     import datetime as dt
     conn = get_conn()
     c = conn.cursor()
@@ -769,7 +719,7 @@ def get_employee_analytics(employee_id):
 
     # 1. Monthly Summary Stats
     c.execute("""SELECT status, COUNT(*) as cnt FROM attendance
-                 WHERE employee_id=? AND date>=? GROUP BY status""", (employee_id, month_start))
+                 WHERE user_id=? AND date>=? GROUP BY status""", (user_id, month_start))
     att_rows = {r[0].lower(): r[1] for r in c.fetchall()}
     present_m = att_rows.get('present', 0)
     late_m = att_rows.get('late', 0)
@@ -777,21 +727,21 @@ def get_employee_analytics(employee_id):
     total_month_days = today.day
     pct = round((present_m + late_m) / total_month_days * 100) if total_month_days > 0 else 0
     
-    c.execute("SELECT COUNT(*) FROM leave_requests WHERE employee_id=? AND status='Approved' AND from_date>=?", (employee_id, month_start))
+    c.execute("SELECT COUNT(*) FROM leave_requests WHERE user_id=? AND status='Approved' AND from_date>=?", (user_id, month_start))
     leaves_m = c.fetchone()[0] or 0
     
-    c.execute("SELECT SUM(working_hours) FROM attendance WHERE employee_id=? AND date>=?", (employee_id, month_start))
+    c.execute("SELECT SUM(working_hours) FROM attendance WHERE user_id=? AND date>=?", (user_id, month_start))
     hours_m = round(c.fetchone()[0] or 0, 1)
 
     # 2. Weekly Summary Stats
     c.execute("""SELECT status, COUNT(*), SUM(working_hours) FROM attendance
-                 WHERE employee_id=? AND date>=? GROUP BY status""", (employee_id, week_start))
+                 WHERE user_id=? AND date>=? GROUP BY status""", (employee_id, week_start))
     w_rows = c.fetchall()
     present_w = sum(r[1] for r in w_rows if r[0].lower() == 'present')
     late_w = sum(r[1] for r in w_rows if r[0].lower() == 'late')
     hours_w = round(sum(r[2] or 0 for r in w_rows), 1)
     
-    c.execute("SELECT COUNT(*) FROM leave_requests WHERE employee_id=? AND status='Approved' AND from_date>=?", (employee_id, week_start))
+    c.execute("SELECT COUNT(*) FROM leave_requests WHERE user_id=? AND status='Approved' AND from_date>=?", (employee_id, week_start))
     leaves_w = c.fetchone()[0] or 0
 
     # 3. Monthly Attendance Distribution (Donut)
@@ -804,7 +754,7 @@ def get_employee_analytics(employee_id):
 
     # 4. Monthly Working Hours Trend (Daily)
     labels_bar, data_bar = [], []
-    c.execute("SELECT date, working_hours FROM attendance WHERE employee_id=? AND date>=? ORDER BY date ASC", (employee_id, month_start))
+    c.execute("SELECT date, working_hours FROM attendance WHERE user_id=? AND date>=? ORDER BY date ASC", (user_id, month_start))
     trend_map = {str(r[0]): r[1] for r in c.fetchall()}
     for i in range(1, today.day + 1):
         d_str = today.replace(day=i).isoformat()
@@ -813,7 +763,7 @@ def get_employee_analytics(employee_id):
 
     # 5. Leave Summary (Casual, Sick, Permission)
     LIMITS = {'Casual Leave': 12, 'Sick Leave': 10, 'Permission': 6}
-    c.execute("SELECT leave_type, COUNT(*) FROM leave_requests WHERE employee_id=? AND status='Approved' GROUP BY leave_type", (employee_id,))
+    c.execute("SELECT leave_type, COUNT(*) FROM leave_requests WHERE user_id=? AND status='Approved' GROUP BY leave_type", (user_id,))
     l_rows = {r[0]: r[1] for r in c.fetchall()}
     leave_summary = []
     total_remaining = 0
@@ -824,7 +774,7 @@ def get_employee_analytics(employee_id):
         leave_summary.append({'type': lt, 'used': used, 'limit': lim, 'remaining': rem})
 
     # 6. Recent Attendance (Analytics Table)
-    c.execute("SELECT TOP 10 date, check_in, check_out, working_hours, status FROM attendance WHERE employee_id=? ORDER BY date DESC", (employee_id,))
+    c.execute("SELECT TOP 10 date, check_in, check_out, working_hours, status FROM attendance WHERE user_id=? ORDER BY date DESC", (user_id,))
     recent = _rows_to_dicts(c, c.fetchall())
 
     conn.close()
@@ -858,12 +808,12 @@ def create_project_assignment(data):
     project_id = c.fetchone()[0]
     
     # Get All Employees
-    c.execute("SELECT employee_id FROM users WHERE role = 'employee'")
+    c.execute("SELECT user_id FROM users WHERE role = 'employee'")
     employees = [row[0] for row in c.fetchall()]
     
     # Create Interest & Notification for ALL
     for eid in employees:
-        c.execute("INSERT INTO project_interest (project_id, employee_id, status) VALUES (?, ?, 'pending')",
+        c.execute("INSERT INTO project_interest (project_id, user_id, status) VALUES (?, ?, 'pending')",
                   (project_id, eid))
         # Logic to add a notification in DB (using the add_notification helper)
         # We'll just call it manually or reuse it
@@ -893,7 +843,7 @@ def get_admin_project_list():
         # Get Accepted
         c.execute("""
             SELECT u.name FROM project_interest pi
-            JOIN users u ON pi.employee_id = u.employee_id
+            JOIN users u ON pi.user_id = u.user_id
             WHERE pi.project_id = ? AND pi.status = 'accepted'
         """, (row['id'],))
         row['accepted_names'] = [r[0] for r in c.fetchall()]
@@ -901,7 +851,7 @@ def get_admin_project_list():
         # Get Declined
         c.execute("""
             SELECT u.name FROM project_interest pi
-            JOIN users u ON pi.employee_id = u.employee_id
+            JOIN users u ON pi.user_id = u.user_id
             WHERE pi.project_id = ? AND pi.status = 'declined'
         """, (row['id'],))
         row['declined_names'] = [r[0] for r in c.fetchall()]
@@ -909,29 +859,29 @@ def get_admin_project_list():
     conn.close()
     return rows
 
-def get_projects_for_employee(employee_id):
+def get_projects_for_employee(user_id):
     """Alias for get_employee_project_tasks to maintain compatibility with app.py calls."""
-    return get_employee_project_tasks(employee_id)
+    return get_employee_project_tasks(user_id)
 
-def get_employee_project_tasks(employee_id):
+def get_employee_project_tasks(user_id):
     conn = get_conn()
     c = conn.cursor()
     c.execute("""
         SELECT pi.*, p.title, p.deadline, p.members_wanted
         FROM project_interest pi
         JOIN projects p ON pi.project_id = p.id
-        WHERE pi.employee_id = ?
+        WHERE pi.user_id = ?
         ORDER BY pi.created_at DESC
-    """, (employee_id,))
+    """, (user_id,))
     rows = _rows_to_dicts(c, c.fetchall())
     conn.close()
     return rows
 
-def update_project_interest_status(project_id, employee_id, status):
+def update_project_interest_status(project_id, user_id, status):
     conn = get_conn()
     c = conn.cursor()
-    c.execute("UPDATE project_interest SET status = ? WHERE project_id = ? AND employee_id = ?",
-              (status, project_id, employee_id))
+    c.execute("UPDATE project_interest SET status = ? WHERE project_id = ? AND user_id = ?",
+              (status, project_id, user_id))
     conn.commit()
     conn.close()
 
@@ -952,7 +902,7 @@ def get_live_status_analytics():
     # Exclude admins
     c.execute("SELECT COUNT(*) FROM users WHERE role != 'admin'")
     total_emps = c.fetchone()[0] or 0
-    c.execute("SELECT COUNT(DISTINCT employee_id) FROM attendance WHERE date = CAST(GETDATE() AS DATE)")
+    c.execute("SELECT COUNT(DISTINCT user_id) FROM attendance WHERE date = CAST(GETDATE() AS DATE)")
     checked_in_today = c.fetchone()[0] or 0
     not_logged = max(0, total_emps - checked_in_today)
     
@@ -975,9 +925,9 @@ def get_avg_working_hours_analytics():
     c.execute("""
         SELECT u.name, COALESCE(SUM(a.working_hours), 0) as total_hrs
         FROM users u
-        LEFT JOIN attendance a ON u.employee_id = a.employee_id AND a.date >= ?
-        WHERE u.employee_id != 'admin'
-        GROUP BY u.employee_id, u.name
+        LEFT JOIN attendance a ON u.user_id = a.user_id AND a.date >= ?
+        WHERE u.user_id != 'admin'
+        GROUP BY u.user_id, u.name
         ORDER BY total_hrs DESC
     """, (month_start,))
     rows = c.fetchall()
@@ -994,9 +944,9 @@ def get_frequent_late_analytics():
     month_start = today.replace(day=1).isoformat()
     
     c.execute("""
-        SELECT TOP 5 u.name, COUNT(a.id) as late_count
+        SELECT TOP 5 u.name, COUNT(*) as late_count
         FROM users u
-        JOIN attendance a ON u.employee_id = a.employee_id
+        JOIN attendance a ON u.user_id = a.user_id
         WHERE a.date >= ? AND a.status = 'Late' AND u.role != 'admin'
         GROUP BY u.name
         ORDER BY late_count DESC
@@ -1026,4 +976,35 @@ def get_leave_type_analytics():
         'labels': types,
         'data': [data_map.get(t, 0) for t in types]
     }
+
+def get_table_data(table_name):
+    allowed = ['users', 'attendance', 'leave_requests', 'meetings', 'projects', 'notifications']
+    if table_name not in allowed:
+        return [], []
+    
+    conn = get_conn()
+    c = conn.cursor()
+    # Using brackets for table names to handle spaces or reserved keywords safely in SQL Server
+    c.execute(f"SELECT * FROM [{table_name}]")
+    columns = [col[0] for col in c.description]
+    rows = c.fetchall()
+    
+    data = []
+    for row in rows:
+        d = {}
+        for i, val in enumerate(row):
+            col_name = columns[i]
+            # Mask sensitive data
+            if col_name in ['password', 'face_embedding']:
+                val = "********"
+            elif col_name == 'face_image' and val:
+                val = "<Binary Data>"
+            # Date/Time formatting
+            if isinstance(val, (date, datetime)):
+                val = val.isoformat()
+            d[col_name] = val
+        data.append(d)
+        
+    conn.close()
+    return columns, data
 

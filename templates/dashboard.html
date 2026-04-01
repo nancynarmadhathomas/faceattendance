@@ -59,7 +59,7 @@
   <div class="sidebar-profile">
     <div class="profile-photo-wrap">
       <img id="profile-img"
-           src="/face-image/{{ emp.employee_id }}"
+           src="/face-image/{{ emp.user_id }}"
            onerror="this.style.display='none';document.getElementById('profile-initials').style.display='flex'"
            alt="Profile">
       <div id="profile-initials" class="profile-initials" style="display:none">
@@ -67,7 +67,7 @@
       </div>
     </div>
     <div class="profile-name">{{ emp.title }} {{ emp.name }}</div>
-    <div class="profile-id">{{ emp.employee_id }}</div>
+    <div class="profile-id">{{ emp.user_id }}</div>
 
     <div id="sidebar-status" style="margin-top:4px;font-size:0.75rem;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px">
       {% if today and not checked_out %}
@@ -417,7 +417,7 @@
             {% for r in history %}
             <tr>
               <td class="text-muted" style="font-size:.8rem">{{ loop.index }}</td>
-              <td style="font-weight:600; color:var(--accent)">{{ r.employee_id }}</td>
+              <td style="font-weight:600; color:var(--accent)">{{ r.user_id }}</td>
               <td style="font-weight:600">{{ emp.name }}</td>
               <td>{{ fmt_date(r.date) }}</td>
               <td class="mono text-green">{{ fmt_time(r.check_in) }}</td>
@@ -451,7 +451,7 @@
             <div class="meet-card-title">{{ m.title }}</div>
             {% if m.description %}<div class="meet-card-desc">{{ m.description }}</div>{% endif %}
             <div class="meet-card-who" style="margin-bottom:12px">
-              {% if m.employee_id and m.employee_id == emp.employee_id %}
+              {% if m.user_id and m.user_id == emp.user_id %}
                 <i data-lucide="user" style="width:12px;height:12px;vertical-align:middle;margin-right:4px"></i>Assigned to you
               {% else %}
                 <i data-lucide="users" style="width:12px;height:12px;vertical-align:middle;margin-right:4px"></i>All employees
@@ -488,7 +488,7 @@
       <!-- Photo card -->
       <div class="dash-card" style="text-align:center">
         <div class="profile-photo-lg">
-          <img src="/face-image/{{ emp.employee_id }}"
+          <img src="/face-image/{{ emp.user_id }}"
                onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"
                alt="Profile">
           <div class="profile-initials-lg" style="display:none">{{ emp.name[0]|upper }}</div>
@@ -507,7 +507,7 @@
       <!-- Info card -->
       <div class="dash-card">
         <div class="card-title" style="margin-bottom:20px">Profile Information</div>
-        <div class="info-row"><span>Employee ID</span>    <strong>{{ emp.employee_id }}</strong></div>
+        <div class="info-row"><span>Employee ID</span>    <strong>{{ emp.user_id }}</strong></div>
         <div class="info-row"><span>Full Name</span>      <strong>{{ emp.title }} {{ emp.name }}</strong></div>
         <div class="info-row"><span>Email</span>          <strong>{{ emp.email or '—' }}</strong></div>
         <div class="info-row"><span>Role</span>           <strong>{{ (emp.role or 'employee')|title }}</strong></div>

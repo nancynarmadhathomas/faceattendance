@@ -122,15 +122,15 @@ def project_work_page():
     return _render_employee_dashboard('project-work')
 
 def _render_employee_dashboard(tab):
-    if 'employee_id' not in session:
+    if 'user_id' not in session:
         return redirect(url_for('index'))
-    emp = db.get_employee(session['employee_id'])
+    emp = db.get_employee(session['user_id'])
     if not emp:
         session.clear()
         return redirect(url_for('index'))
         
-    uid          = session['employee_id']
-    history      = db.get_attendance_history(uid)
+    user_id      = session['user_id']
+    history      = db.get_attendance_history(user_id)
     today_str    = __import__('datetime').date.today().isoformat()
     
     today_rec = None
@@ -138,15 +138,15 @@ def _render_employee_dashboard(tab):
         if history[0].get('date') == today_str:
             today_rec = history[0]
     
-    meetings     = db.get_meetings_for_employee(uid)
-    leave_reqs   = db.get_leave_requests_by_employee(uid)
-    monthly      = db.get_monthly_stats(uid)
-    leave_bal    = db.get_leave_balance(uid)
-    upcoming     = db.get_upcoming_meetings(uid)
-    notifs       = db.get_notifications(uid)
-    analytics    = db.get_employee_analytics(uid)
-    projects     = db.get_projects_for_employee(uid)
-    project_tasks = db.get_employee_project_tasks(uid)
+    meetings     = db.get_meetings_for_employee(user_id)
+    leave_reqs   = db.get_leave_requests_by_employee(user_id)
+    monthly      = db.get_monthly_stats(user_id)
+    leave_bal    = db.get_leave_balance(user_id)
+    upcoming     = db.get_upcoming_meetings(user_id)
+    notifs       = db.get_notifications(user_id)
+    analytics    = db.get_employee_analytics(user_id)
+    projects     = db.get_projects_for_employee(user_id)
+    project_tasks = db.get_employee_project_tasks(user_id)
     latest       = history[0] if history else None
 
     return render_template('dashboard.html',
@@ -172,17 +172,17 @@ def _render_employee_dashboard(tab):
 
 @app.route('/attendance')
 def attendance_nav():
-    if 'employee_id' not in session: return redirect(url_for('index'))
+    if 'user_id' not in session: return redirect(url_for('index'))
     return redirect(url_for('dashboard', tab='attendance'))
 
 @app.route('/meetings')
 def meetings_nav():
-    if 'employee_id' not in session: return redirect(url_for('index'))
+    if 'user_id' not in session: return redirect(url_for('index'))
     return redirect(url_for('dashboard', tab='meetings'))
 
 @app.route('/leave-request')
 def leave_nav():
-    if 'employee_id' not in session: return redirect(url_for('index'))
+    if 'user_id' not in session: return redirect(url_for('index'))
     return redirect(url_for('dashboard', tab='leave-sec'))
 
 
@@ -190,7 +190,7 @@ def leave_nav():
 @app.route('/admin')
 @app.route('/admin/<tab>')
 def admin(tab='attendance'):
-    if session.get('role') != 'admin' and session.get('employee_id') != 'admin':
+    if session.get('role') != 'admin' and session.get('user_id') != 'admin':
         return redirect(url_for('index'))
         
     # Sanitize and default
@@ -206,7 +206,7 @@ def admin(tab='attendance'):
     meetings    = db.get_all_meetings()
     all_emps    = db.get_all_employees()
     leave_reqs  = db.get_all_leave_requests()
-    admin_info  = db.get_employee(session.get('employee_id'))
+    admin_info  = db.get_employee(session.get('user_id'))
 
     # New Analytics Data (Only for Analytics tab)
     is_analytics = (active_tab == 'analytics')
@@ -238,21 +238,21 @@ def admin(tab='attendance'):
                            fmt_date=db.fmt_date)
 
 
-@app.route('/admin/employee-profile/<emp_id>')
-def admin_employee_profile(emp_id):
-    if session.get('role') != 'admin' and session.get('employee_id') != 'admin':
+@app.route('/admin/employee-profile/<user_id>')
+def admin_employee_profile(user_id):
+    if session.get('role') != 'admin' and session.get('user_id') != 'admin':
         return redirect(url_for('index'))
     
-    emp = db.get_employee(emp_id)
+    emp = db.get_employee(user_id)
     if not emp:
         return redirect(url_for('admin', tab='employees'))
         
-    admin_info = db.get_employee(session.get('employee_id'))
-    today_rec = db.get_today_record(emp_id)
-    analytics = db.get_employee_analytics(emp_id)
-    projects = db.get_employee_project_tasks(emp_id)
-    leaves = db.get_leave_requests_by_employee(emp_id)
-    leave_bal = db.get_leave_balance(emp_id)
+    admin_info = db.get_employee(session.get('user_id'))
+    today_rec = db.get_today_record(user_id)
+    analytics = db.get_employee_analytics(user_id)
+    projects = db.get_employee_project_tasks(user_id)
+    leaves = db.get_leave_requests_by_employee(user_id)
+    leave_bal = db.get_leave_balance(user_id)
     
     # Calculate project counts
     proj_stats = {
@@ -276,17 +276,38 @@ def admin_employee_profile(emp_id):
                            leaves=leaves,
                            leave_bal=leave_bal,
                            last_leave_date=last_leave_date,
-                           fmt_time=db.fmt_time,
                            fmt_date=db.fmt_date)
+
+
+@app.route('/admin/db')
+@app.route('/admin/db/<table_name>')
+def admin_db(table_name='users'):
+    if session.get('role') != 'admin' and session.get('user_id') != 'admin':
+        return redirect(url_for('index'))
+    
+    # Map user-friendly name to actual table name
+    actual_table = table_name
+    if table_name == 'leaves':
+        actual_table = 'leave_requests'
+        
+    columns, data = db.get_table_data(actual_table)
+    admin_info = db.get_employee(session.get('user_id'))
+    
+    return render_template('admin_db.html', 
+                           active_tab='db',
+                           table_name=table_name,
+                           columns=columns, 
+                           data=data, 
+                           admin_info=admin_info)
 
 
 @app.route('/admin/projects')
 def admin_projects():
-    if session.get('role') != 'admin' and session.get('employee_id') != 'admin':
+    if session.get('role') != 'admin' and session.get('user_id') != 'admin':
         return redirect(url_for('index'))
     projects = db.get_admin_project_list()
     employees = db.get_all_employees()
-    admin_info = db.get_employee(session.get('employee_id'))
+    admin_info = db.get_employee(session.get('user_id'))
     return render_template('admin_projects.html', 
                            projects=projects, 
                            employees=employees,
@@ -294,40 +315,40 @@ def admin_projects():
 
 @app.route('/admin/projects/create', methods=['POST'])
 def admin_project_create():
-    if session.get('role') != 'admin' and session.get('employee_id') != 'admin':
+    if session.get('role') != 'admin' and session.get('user_id') != 'admin':
         return redirect(url_for('index'))
     data = {
         'title': request.form.get('title'),
         'members_wanted': request.form.get('members_wanted'),
         'deadline': request.form.get('deadline'),
-        'created_by': session.get('employee_id')
+        'created_by': session.get('user_id')
     }
     db.create_project_assignment(data)
     return redirect(url_for('admin_projects'))
 
 @app.route('/employee/project/respond', methods=['POST'])
 def employee_project_respond():
-    if 'employee_id' not in session:
+    if 'user_id' not in session:
         return jsonify({'success': False}), 401
     
     data = request.json or {}
     project_id = data.get('project_id')
     status = data.get('status') # accepted, declined
     
-    db.update_project_interest_status(project_id, session['employee_id'], status)
+    db.update_project_interest_status(project_id, session['user_id'], status)
     
     # Notify admin with specific choice
-    uname = session.get('user_name', session.get('employee_id', 'Employee'))
+    uname = session.get('user_name', session.get('user_id', 'Employee'))
     db.add_notification('admin', f"{uname} {status} project assignment")
     
     return jsonify({'success': True})
 
 @app.route('/api/project/details/<int:pid>')
 def api_project_details(pid):
-    if 'employee_id' not in session:
+    if 'user_id' not in session:
         return jsonify({'success': False}), 401
     
-    details = db.get_project_details(pid, session['employee_id'])
+    details = db.get_project_details(pid, session['user_id'])
     if details:
         return jsonify({
             'success': True,
@@ -342,9 +363,9 @@ def api_project_details(pid):
 # ---------------------------------------------------------------------------
 # Routes — API
 # ---------------------------------------------------------------------------
-@app.route('/face-image/<emp_id>', methods=['GET'])
-def get_face_image(emp_id):
-    emp = db.get_employee(emp_id)
+@app.route('/face-image/<user_id>', methods=['GET'])
+def get_face_image(user_id):
+    emp = db.get_employee(user_id)
     if not emp or not emp.get('face_image'):
         return '', 404
     return Response(emp['face_image'], mimetype='image/jpeg')
@@ -370,20 +391,20 @@ def api_verify():
         if not match:
             return jsonify({'success': False, 'message': 'Face not registered'})
 
-        emp_id = match['employee_id']
+        user_id = match['user_id']
 
-        # Get employee_id and fetch true role exactly as requested
+        # Get user_id and fetch true role exactly as requested
         conn = db.get_conn()
         c = conn.cursor()
-        c.execute("SELECT role FROM users WHERE employee_id = ?", (emp_id,))
+        c.execute("SELECT role FROM users WHERE user_id = ?", (user_id,))
         row = c.fetchone()
         role = row[0] if (row and row[0]) else 'employee'
         conn.close()
         
         # LOG LOGIN EVENT TO SQL SERVER
-        db.log_login_event(emp_id)
+        db.log_login_event(user_id)
 
-        session['employee_id'] = emp_id
+        session['user_id'] = user_id
         session['user_name'] = match['name']
         session['role'] = role
 
@@ -404,26 +425,26 @@ def api_verify():
 
 @app.route('/api/late-reason', methods=['POST'])
 def api_late_reason():
-    if 'employee_id' not in session:
+    if 'user_id' not in session:
         return jsonify({'success': False})
     reason = (request.json or {}).get('reason', '')
-    db.update_late_reason(session['employee_id'], reason)
+    db.update_late_reason(session['user_id'], reason)
     return jsonify({'success': True})
 
 
 @app.route('/api/checkin', methods=['POST'])
 def api_checkin():
     """Dashboard Clock In — employee is already in session."""
-    if 'employee_id' not in session:
+    if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'Not logged in'})
-    emp_id = session['employee_id']
+    user_id = session['user_id']
     # Prevent duplicate check-ins
-    existing = db.get_today_record(emp_id)
+    existing = db.get_today_record(user_id)
     if existing:
         return jsonify({'success': False, 'message': 'Already checked in today'})
     now = datetime.now()
     status = determine_status()
-    db.log_checkin(emp_id, status=status)
+    db.log_checkin(user_id, status=status)
     return jsonify({
         'success':        True,
         'late':           status == 'Late',
@@ -436,19 +457,19 @@ def api_checkin():
 
 @app.route('/api/register', methods=['POST'])
 def api_register():
-    data   = request.json or {}
-    emp_id = (data.get('employee_id') or '').strip()
-    name   = (data.get('name') or '').strip()
+    data    = request.json or {}
+    user_id = (data.get('user_id') or '').strip()
+    name    = (data.get('name') or '').strip()
 
     # Validate required fields
-    if not emp_id or not name:
-        return jsonify({'success': False, 'message': 'Employee ID and Name are required.'})
+    if not user_id or not name:
+        return jsonify({'success': False, 'message': 'User ID and Name are required.'})
 
-    # Pre-check: employee_id already exists?
-    if db.get_employee(emp_id):
+    # Pre-check: user_id already exists?
+    if db.get_employee(user_id):
         return jsonify({
             'success': False,
-            'message': f'Employee ID "{emp_id}" is already registered. Use a different ID or go back to Login.'
+            'message': f'User ID "{user_id}" is already registered. Use a different ID or go back to Login.'
         })
 
     img_b64 = data.get('image', '')
@@ -466,7 +487,7 @@ def api_register():
             return jsonify({'success': False, 'message': emb_res.get('message', 'Face embedding failed.')})
 
         db.register_employee({
-            'employee_id':    emp_id,
+            'user_id':        user_id,
             'title':          data.get('title', ''),
             'name':           name,
             'email':          data.get('email', ''),
@@ -480,7 +501,7 @@ def api_register():
         err = str(e).lower()
         if 'unique' in err or 'duplicate' in err:
             return jsonify({'success': False,
-                            'message': f'Employee ID "{emp_id}" is already taken. Please use a different ID.'})
+                            'message': f'User ID "{user_id}" is already taken. Please use a different ID.'})
         return jsonify({'success': False, 'message': 'Registration failed. Please try again.'})
     finally:
         try:
@@ -500,11 +521,11 @@ def api_register():
 
 @app.route('/api/checkout', methods=['POST'])
 def api_checkout():
-    if 'employee_id' not in session:
+    if 'user_id' not in session:
         return jsonify({'success': False})
     
     now = datetime.now()
-    hours = db.log_checkout(session['employee_id'])
+    hours = db.log_checkout(session['user_id'])
     
     return jsonify({
         'success':       True,
@@ -517,16 +538,16 @@ def api_checkout():
 
 @app.route('/api/meetings', methods=['GET'])
 def api_meetings():
-    if 'employee_id' not in session:
+    if 'user_id' not in session:
         return jsonify([])
-    meetings = db.get_meetings_for_employee(session['employee_id'])
+    meetings = db.get_meetings_for_employee(session['user_id'])
     return jsonify(meetings)
 
 
 @app.route('/logout')
 def logout():
-    if session.get('employee_id') and session.get('employee_id') != 'admin':
-        db.log_checkout(session['employee_id'])
+    if session.get('user_id') and session.get('user_id') != 'admin':
+        db.log_checkout(session['user_id'])
     session.clear()
     return redirect(url_for('index'))
 
@@ -534,7 +555,7 @@ def logout():
 # ── Leave Requests ──────────────────────────────────────────────────────────
 @app.route('/api/leave-request', methods=['POST'])
 def api_submit_leave():
-    if 'employee_id' not in session:
+    if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'Not logged in'})
     data = request.json or {}
     leave_type = (data.get('leave_type') or '').strip()
@@ -544,107 +565,107 @@ def api_submit_leave():
     if not leave_type or not from_date or not to_date:
         return jsonify({'success': False, 'message': 'Leave type, from date and to date are required.'})
     db.create_leave_request({
-        'employee_id': session['employee_id'],
+        'user_id':    session['user_id'],
         'leave_type':  leave_type,
         'from_date':   from_date,
         'to_date':     to_date,
         'reason':      reason
     })
     # Feature 3: Send notification to Admin
-    db.add_notification('admin', f"{session.get('user_name', session['employee_id'])} requested leave")
+    db.add_notification('admin', f"{session.get('user_name', session['user_id'])} requested leave")
     return jsonify({'success': True})
 
 
 @app.route('/api/leave-requests', methods=['GET'])
 def api_my_leave_requests():
-    if 'employee_id' not in session:
+    if 'user_id' not in session:
         return jsonify([])
-    return jsonify(db.get_leave_requests_by_employee(session['employee_id']))
-@app.route('/api/admin/leave/<int:lid>/approve', methods=['POST'])
-def api_approve_leave(lid):
-    if session.get('role') != 'admin' and session.get('employee_id') != 'admin':
+    return jsonify(db.get_leave_requests_by_employee(session['user_id']))
+@app.route('/api/admin/leave/approve', methods=['POST'])
+def api_approve_leave():
+    if session.get('role') != 'admin' and session.get('user_id') != 'admin':
         return jsonify({'success': False})
-    db.update_leave_status(lid, 'Approved')
     
-    # Feature 3: Send notification to Employee
-    conn = db.get_conn()
-    c = conn.cursor()
-    c.execute("SELECT employee_id FROM leave_requests WHERE id=?", (lid,))
-    row = c.fetchone()
-    if row:
-        db.add_notification(row[0], "Leave Approved")
-    conn.close()
+    data = request.json or {}
+    uid = data.get('user_id')
+    fdate = data.get('from_date')
+    
+    db.update_leave_status(uid, fdate, 'Approved')
+    db.add_notification(uid, "Leave Approved")
     
     return jsonify({'success': True})
 
 
-@app.route('/api/admin/leave/<int:lid>/reject', methods=['POST'])
-def api_reject_leave(lid):
-    if session.get('role') != 'admin' and session.get('employee_id') != 'admin':
+@app.route('/api/admin/leave/reject', methods=['POST'])
+def api_reject_leave():
+    if session.get('role') != 'admin' and session.get('user_id') != 'admin':
         return jsonify({'success': False})
-    db.update_leave_status(lid, 'Rejected')
     
-    # Feature 3: Send notification to Employee
-    conn = db.get_conn()
-    c = conn.cursor()
-    c.execute("SELECT employee_id FROM leave_requests WHERE id=?", (lid,))
-    row = c.fetchone()
-    if row:
-        db.add_notification(row[0], "Leave Rejected")
-    conn.close()
+    data = request.json or {}
+    uid = data.get('user_id')
+    fdate = data.get('from_date')
+    
+    db.update_leave_status(uid, fdate, 'Rejected')
+    db.add_notification(uid, "Leave Rejected")
     
     return jsonify({'success': True})
 # ── Admin Operations ────────────────────────────────────────────────────────
 @app.route('/api/admin/meeting', methods=['POST'])
 def api_create_meeting():
-    if session.get('role') != 'admin' and session.get('employee_id') != 'admin':
+    if session.get('role') != 'admin' and session.get('user_id') != 'admin':
         return jsonify({'success': False, 'message': 'Unauthorized'}), 403
     data = request.json or {}
     if not data.get('title') or not data.get('date') or not data.get('time'):
         return jsonify({'success': False, 'message': 'Title, date, and time are required.'})
-    emp_id = (data.get('employee_id') or '').strip()
+    user_id = (data.get('user_id') or '').strip()
     db.create_meeting({
         'title':       data['title'],
         'date':        data['date'],
         'time':        data['time'],
         'description': data.get('description', ''),
-        'employee_id': emp_id if emp_id else None,
-        'created_by':  session.get('employee_id')
+        'user_id':     user_id if user_id else None,
+        'created_by':  session.get('user_id')
     })
     
-    # Send notification to assigned employee
-    if emp_id:
-        db.add_notification(emp_id, f"New meeting scheduled: {data['title']}")
+    # Send notification to assigned user
+    if user_id:
+        db.add_notification(user_id, f"New meeting scheduled: {data['title']}")
         
     return jsonify({'success': True})
 
-@app.route('/api/admin/meeting/<int:mid>', methods=['DELETE'])
-def api_delete_meeting(mid):
-    if session.get('role') != 'admin' and session.get('employee_id') != 'admin':
+@app.route('/api/admin/meeting/delete', methods=['DELETE'])
+def api_delete_meeting():
+    if session.get('role') != 'admin' and session.get('user_id') != 'admin':
         return jsonify({'success': False}), 403
-    db.delete_meeting(mid)
+    
+    data = request.json or {}
+    title = data.get('title')
+    mdate = data.get('date')
+    uid = data.get('user_id')
+    
+    db.delete_meeting(title, mdate, uid)
     return jsonify({'success': True})
 
-@app.route('/api/admin/employee/<emp_id>', methods=['DELETE'])
-def api_delete_employee(emp_id):
-    if session.get('role') != 'admin' and session.get('employee_id') != 'admin':
+@app.route('/api/admin/employee/<user_id>', methods=['DELETE'])
+def api_delete_employee(user_id):
+    if session.get('role') != 'admin' and session.get('user_id') != 'admin':
         return jsonify({'success': False}), 403
-    db.delete_employee(emp_id)
+    db.delete_employee(user_id)
     return jsonify({'success': True})
 @app.route('/api/admin/add-employee', methods=['POST'])
 def api_add_employee():
-    if session.get('role') != 'admin' and session.get('employee_id') != 'admin':
+    if session.get('role') != 'admin' and session.get('user_id') != 'admin':
         return jsonify({'success': False, 'message': 'Unauthorized'}), 403
     data = request.json or {}
-    emp_id = (data.get('employee_id') or '').strip()
+    user_id = (data.get('user_id') or '').strip()
     name   = (data.get('name') or '').strip()
     email  = (data.get('email') or '').strip()
     role   = data.get('role', 'employee')
-    if not emp_id or not name:
-        return jsonify({'success': False, 'message': 'Employee ID and Name are required.'})
+    if not user_id or not name:
+        return jsonify({'success': False, 'message': 'User ID and Name are required.'})
     try:
         db.register_employee({
-            'employee_id': emp_id,
+            'user_id': user_id,
             'name': name,
             'email': email,
             'role': role,
@@ -659,7 +680,7 @@ def api_add_employee():
 
 @app.route('/api/meeting/respond', methods=['POST'])
 def api_meeting_respond():
-    if 'employee_id' not in session:
+    if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'Not logged in'}), 401
     data = request.json or {}
     mid = data.get('meeting_id')
@@ -669,10 +690,10 @@ def api_meeting_respond():
     if not mid or not status:
         return jsonify({'success': False, 'message': 'Meeting ID and status required.'})
         
-    db.save_meeting_response(mid, session['employee_id'], status, reason)
+    db.save_meeting_response(mid, session['user_id'], status, reason)
     
     # Feature 2: Admin Notification
-    uname = session.get('user_name', session['employee_id'])
+    uname = session.get('user_name', session['user_id'])
     msg = f"{uname} {status} meeting"
     if status == 'declined' and reason:
         msg = f"{uname} declined meeting - Reason: {reason}"
@@ -694,10 +715,10 @@ def api_meeting_respond():
 # ---------------------------------------------------------------------------
 @app.route('/api/dashboard-data', methods=['GET'])
 def api_dashboard_data():
-    if 'employee_id' not in session:
+    if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'Not logged in'}), 401
-    uid = session['employee_id']
-    emp = db.get_employee(uid)
+    user_id = session['user_id']
+    emp = db.get_employee(user_id)
     if not emp:
         return jsonify({'success': False, 'message': 'User not found'}), 404
 
@@ -707,13 +728,13 @@ def api_dashboard_data():
         face_image = base64.b64encode(emp['face_image']).decode('utf-8')
 
     # Fetch history for synchronization
-    history = db.get_attendance_history(uid)
+    history = db.get_attendance_history(user_id)
     today_str = __import__('datetime').date.today().isoformat()
     
     data = {
         'success':    True,
         'employee':   {
-            'employee_id': emp['employee_id'],
+            'user_id':    emp['user_id'],
             'name':        emp['name'],
             'email':       emp.get('email'),
             'role':        emp.get('role'),
@@ -722,9 +743,9 @@ def api_dashboard_data():
         },
         'today':      history[0] if (history and history[0].get('date') == today_str) else None,
         'history':    history,
-        'leave_bal':  db.get_leave_balance(uid),
-        'upcoming':   db.get_upcoming_meetings(uid),
-        'notifications': db.get_notifications(uid)
+        'leave_bal':  db.get_leave_balance(user_id),
+        'upcoming':   db.get_upcoming_meetings(user_id),
+        'notifications': db.get_notifications(user_id)
     }
     
     return jsonify(data)
@@ -732,7 +753,7 @@ def api_dashboard_data():
 
 @app.route('/api/admin-dashboard-data', methods=['GET'])
 def api_admin_dashboard_data():
-    if session.get('role') != 'admin' and session.get('employee_id') != 'admin':
+    if session.get('role') != 'admin' and session.get('user_id') != 'admin':
         return jsonify({'success': False, 'message': 'Unauthorized'}), 403
     
     data = {
@@ -749,7 +770,7 @@ def api_admin_dashboard_data():
 
 @app.route('/api/admin/analytics')
 def api_admin_analytics():
-    if session.get('role') != 'admin' and session.get('employee_id') != 'admin':
+    if session.get('role') != 'admin' and session.get('user_id') != 'admin':
         return jsonify({'success': False})
     
     a_type = request.args.get('type', 'trend')

@@ -12,14 +12,14 @@ def check_users():
     try:
         conn = pyodbc.connect(CONN_STR)
         cursor = conn.cursor()
-        cursor.execute("SELECT employee_id, name, role FROM users")
+        cursor.execute("SELECT user_id, name, role FROM users")
         rows = cursor.fetchall()
-        print(\"--- All Users ---\")
+        print("--- All Users ---")
         for row in rows:
-            print(f\"ID: {row.employee_id}, Name: {row.name}, Role: {row.role}\")
+            print(f"ID: {row.user_id}, Name: {row.name}, Role: {row.role}")
         conn.close()
     except Exception as e:
-        print(f\"Error: {e}\")
+        print(f"Error: {e}")
 
-if __name__ == \"__main__\":
+if __name__ == "__main__":
     check_users()

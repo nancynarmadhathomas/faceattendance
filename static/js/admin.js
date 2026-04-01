@@ -102,7 +102,7 @@ async function saveMeeting() {
     const res = await fetch('/api/admin/meeting', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, date, time, employee_id: emp, description: desc })
+      body: JSON.stringify({ title, date, time, user_id: emp, description: desc })
     });
     const data = await res.json();
     if (data.success) {
@@ -128,7 +128,7 @@ async function saveEmployee() {
   const role  = document.getElementById('e-role').value;
 
   if (!eid || !ename) {
-    showToast('Employee ID and Name are required.', 'error');
+    showToast('User ID and Name are required.', 'error');
     return;
   }
 
@@ -136,7 +136,7 @@ async function saveEmployee() {
     const res = await fetch('/api/admin/add-employee', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ employee_id: eid, name: ename, email: email, role: role })
+      body: JSON.stringify({ user_id: eid, name: ename, email: email, role: role })
     });
     const data = await res.json();
     if (data.success) {
@@ -151,9 +151,13 @@ async function saveEmployee() {
 }
 
 // ── Actions ─────────────────────────────────────
-async function leaveAction(id, action) {
+async function leaveAction(user_id, from_date, action) {
   try {
-    const res  = await fetch(`/api/admin/leave/${id}/${action}`, { method:'POST' });
+    const res = await fetch(`/api/admin/leave/${action}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: user_id, from_date: from_date })
+    });
     const data = await res.json();
     if (data.success) {
       showToast('Success');
@@ -182,14 +186,18 @@ async function deleteEmployee(id) {
   }
 }
 
-async function deleteMeeting(id) {
+async function deleteMeeting(title, date, user_id) {
   if (!confirm('Are you sure you want to delete this meeting?')) return;
   try {
-    const res = await fetch(`/api/admin/meeting/${id}`, { method:'DELETE' });
+    const res = await fetch('/api/admin/meeting/delete', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, date, user_id })
+    });
     const data = await res.json();
     if (data.success) {
       showToast('Success');
-      document.getElementById(`mcard-${id}`)?.remove();
+      setTimeout(() => location.reload(), 800);
     } else {
       showToast('Failed', 'error');
     }
