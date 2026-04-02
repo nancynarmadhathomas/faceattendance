@@ -753,22 +753,35 @@
       <div class="dash-card">
         <div class="card-header" style="padding-bottom:10px">
           <span id="p-title-{{ p.project_id }}" class="card-title" style="font-size:1.05rem">{{ p.title }}</span>
-          {% if p.status == 'accepted' %}
-            <span class="pill pill-present">Accepted</span>
-          {% elif p.status == 'declined' %}
-            <span class="pill pill-absent">Declined</span>
-          {% endif %}
+          <div style="display:flex; gap:8px; align-items:center">
+            {% if p.status == 'accepted' %}
+              <span class="pill pill-present">Accepted</span>
+            {% elif p.status == 'declined' %}
+              <span class="pill pill-absent">Declined</span>
+            {% endif %}
+            
+            {% if p.project_status == 'FULL' %}
+              <span class="pill pill-absent" style="background:var(--danger); color:#fff; border:none">FULL</span>
+            {% endif %}
+          </div>
         </div>
         <div style="padding:0 24px 20px">
           <p class="text-muted" style="font-size:0.85rem;margin-bottom:12px;line-height:1.5">{{ p.description }}</p>
           <div style="display:flex;gap:20px;font-size:0.75rem;margin-bottom:16px;color:var(--text-dim)">
-            <span style="display:flex;align-items:center;gap:6px"><i data-lucide="users" style="width:14px;height:14px"></i> {{ p.members_wanted }} Required</span>
+            <span style="display:flex;align-items:center;gap:6px">
+              <i data-lucide="users" style="width:14px;height:14px"></i> 
+              {{ p.accepted_count }} / {{ p.members_wanted }} Accepted
+            </span>
             <span style="display:flex;align-items:center;gap:6px"><i data-lucide="calendar" style="width:14px;height:14px"></i> Deadline: {{ p.deadline }}</span>
           </div>
 
           {% if p.status == 'pending' %}
           <div id="p-actions-{{ p.project_id }}" style="display:flex;gap:10px">
-            <button onclick="submitProjectResponsePage('{{ p.project_id }}', 'accepted')" class="btn btn-primary btn-sm" style="flex:1">Accept</button>
+            {% if p.project_status == 'FULL' %}
+              <button disabled class="btn btn-muted btn-sm" style="flex:2; opacity:0.6; cursor:not-allowed">Full Capacity</button>
+            {% else %}
+              <button onclick="submitProjectResponsePage('{{ p.project_id }}', 'accepted')" class="btn btn-primary btn-sm" style="flex:1">Accept</button>
+            {% endif %}
             <button onclick="submitProjectResponsePage('{{ p.project_id }}', 'declined')" class="btn btn-ghost btn-sm" style="flex:1">Decline</button>
           </div>
           {% endif %}

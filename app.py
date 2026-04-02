@@ -319,6 +319,7 @@ def admin_project_create():
         return redirect(url_for('index'))
     data = {
         'title': request.form.get('title'),
+        'description': request.form.get('description'),
         'members_wanted': request.form.get('members_wanted'),
         'deadline': request.form.get('deadline'),
         'created_by': session.get('user_id')
@@ -435,24 +436,31 @@ def api_late_reason():
 @app.route('/api/checkin', methods=['POST'])
 def api_checkin():
     """Dashboard Clock In — employee is already in session."""
-    if 'user_id' not in session:
-        return jsonify({'success': False, 'message': 'Not logged in'})
-    user_id = session['user_id']
-    # Prevent duplicate check-ins
-    existing = db.get_today_record(user_id)
-    if existing:
-        return jsonify({'success': False, 'message': 'Already checked in today'})
-    now = datetime.now()
-    status = determine_status()
-    db.log_checkin(user_id, status=status)
-    return jsonify({
-        'success':        True,
-        'late':           status == 'Late',
-        'status':         status,
-        'checked_in':     True,
-        'check_in_time':  now.strftime('%H:%M:%S'),
-        'working_hours':  0
-    })
+    try:
+        # 4. Validate required values: user_id must not be null
+        if 'user_id' not in session:
+            return jsonify({'success': False, 'message': 'Not logged in'})
+        
+        user_id = session['user_id']
+        now = datetime.now()
+        status = determine_status()
+        
+        # 5. If record already exists, update instead of insert (handled in db.log_checkin)
+        db.log_checkin(user_id, status=status)
+        
+        # 7. Return success response
+        return jsonify({
+            'success':        True,
+            'late':           status == 'Late',
+            'status':         status,
+            'checked_in':     True,
+            'check_in_time':  now.strftime('%H:%M:%S'),
+            'working_hours':  0
+        })
+    except Exception as e:
+        # 3. Print real error in console
+        print("CHECKIN FK ERROR:", str(e))
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route('/api/register', methods=['POST'])
@@ -650,8 +658,11 @@ def api_delete_meeting():
 def api_delete_employee(user_id):
     if session.get('role') != 'admin' and session.get('user_id') != 'admin':
         return jsonify({'success': False}), 403
-    db.delete_employee(user_id)
-    return jsonify({'success': True})
+    try:
+        db.delete_employee(user_id)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 @app.route('/api/admin/add-employee', methods=['POST'])
 def api_add_employee():
     if session.get('role') != 'admin' and session.get('user_id') != 'admin':

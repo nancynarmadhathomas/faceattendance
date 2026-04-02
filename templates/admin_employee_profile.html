@@ -199,8 +199,11 @@
             if(data.success) {
                 location.href = '/admin/employees';
             } else {
-                alert("Failed to delete employee.");
+                console.error("Delete failed:", data.error);
             }
+        })
+        .catch(err => {
+            console.error("Network error during delete:", err);
         });
     }
   }

@@ -63,7 +63,6 @@ async function captureAndVerify() {
     if (result.success) {
       stopCamera();
       showToast(`✅ Welcome, ${result.name}! Redirecting...`, 'success');
-      // FIX: Login only — no late check, no attendance here
       setTimeout(() => window.location.href = result.redirect, 1000);
     } else {
       showToast('❌ ' + (result.message || 'Face not recognized.'), 'danger');
@@ -99,6 +98,7 @@ async function submitLateReason() {
 // ── Toast helper ─────────────────────────────────────────────────
 function showToast(msg, type='info') {
   const t = document.getElementById('toast');
+  if (!t) return;
   t.className = `toast toast-${type} mt-4`;
   t.textContent = msg;
   t.style.display = 'block';

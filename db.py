@@ -46,6 +46,7 @@ def init_db():
            )""",
         """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='meetings' and xtype='U')
            CREATE TABLE meetings (
+               id INT IDENTITY(1,1) PRIMARY KEY,
                title NVARCHAR(255) NOT NULL,
                description NVARCHAR(MAX),
                meeting_date DATE NOT NULL,
@@ -72,7 +73,7 @@ def init_db():
            )""",
         """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='notifications' and xtype='U')
            CREATE TABLE notifications (
-               user_id VARCHAR(50) NOT NULL,
+               recipient_id VARCHAR(50) NOT NULL,
                message NVARCHAR(MAX) NOT NULL,
                type VARCHAR(20) DEFAULT 'info',
                project_id INT,
@@ -91,6 +92,7 @@ def init_db():
            CREATE TABLE projects (
                id INT IDENTITY(1,1) PRIMARY KEY,
                title NVARCHAR(255) NOT NULL,
+               description NVARCHAR(MAX),
                members_wanted INT DEFAULT 1,
                deadline DATE,
                created_by VARCHAR(50),
@@ -122,9 +124,45 @@ def init_db():
         except Exception as e:
             print(f"Migration error on {table}: {e}")
 
-        
+    # --- Migration: Add 'id' to 'meetings' if missing ---
+    try:
+        c.execute("SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('meetings') AND name = 'id'")
+        if not c.fetchone():
+            print("Migrating 'meetings' table: Adding 'id' primary key column...")
+            c.execute("ALTER TABLE meetings ADD id INT IDENTITY(1,1) PRIMARY KEY")
+            conn.commit()
+    except Exception as e:
+        print(f"Migration error adding 'id' to meetings: {e}")
 
+    # --- Migration: Remove 'employee_name' from 'attendance' if exists ---
+    try:
+        c.execute("SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('attendance') AND name = 'employee_name'")
+        if c.fetchone():
+            print("Migrating 'attendance' table: Removing 'employee_name' column...")
+            c.execute("ALTER TABLE attendance DROP COLUMN employee_name")
+            conn.commit()
+    except Exception as e:
+        print(f"Migration error removing 'employee_name' from attendance: {e}")
 
+    # --- Migration: Add 'description' to 'projects' ---
+    try:
+        c.execute("SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('projects') AND name = 'description'")
+        if not c.fetchone():
+            print("Migrating 'projects' table: Adding 'description' column...")
+            c.execute("ALTER TABLE projects ADD description NVARCHAR(MAX)")
+            conn.commit()
+    except Exception as e:
+        print(f"Migration error adding 'description' to projects: {e}")
+
+    # --- Migration: Rename user_id to recipient_id in notifications ---
+    try:
+        c.execute("SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('notifications') AND name = 'user_id'")
+        if c.fetchone():
+            print("Migrating table notifications: Renaming user_id to recipient_id...")
+            c.execute("EXEC sp_rename 'notifications.user_id', 'recipient_id', 'COLUMN'")
+            conn.commit()
+    except Exception as e:
+        print(f"Migration error on notifications: {e}")
 
     # Check admin existence
     c.execute("SELECT user_id FROM users WHERE user_id='admin'")
@@ -221,8 +259,20 @@ def get_all_embeddings():
 def delete_employee(user_id):
     conn = get_conn()
     c = conn.cursor()
-    c.execute("DELETE FROM users WHERE user_id=?", (user_id,))
+    # 2. Delete dependent records first (attendance, leave_requests, meetings if exists)
+    # Order: attendance → leave_requests → meetings → users
+    # Plus other dependencies discovered in schema
     c.execute("DELETE FROM attendance WHERE user_id=?", (user_id,))
+    c.execute("DELETE FROM leave_requests WHERE user_id=?", (user_id,))
+    c.execute("DELETE FROM meeting_responses WHERE user_id=?", (user_id,))
+    c.execute("DELETE FROM meetings WHERE user_id=?", (user_id,))
+    c.execute("DELETE FROM notifications WHERE user_id=?", (user_id,))
+    c.execute("DELETE FROM project_interest WHERE user_id=?", (user_id,))
+    c.execute("DELETE FROM login_logs WHERE user_id=?", (user_id,))
+    
+    # 3. Then delete from users table
+    c.execute("DELETE FROM users WHERE user_id=?", (user_id,))
+    
     conn.commit()
     conn.close()
 
@@ -246,19 +296,35 @@ def get_today_record(user_id):
     return row
 
 def log_checkin(user_id, status='Present', late_reason=None):
+    """
+    STRICT CHECKIN with FK Validation:
+    1. Check if user exists in 'users' table (satisfy FK constraint).
+    2. If not exists -> Insert 'Temp User'.
+    3. If attendance exists -> UPDATE.
+    4. Else -> INSERT attendance.
+    """
     conn = get_conn()
     c = conn.cursor()
     now = datetime.now()
     
-    # Fetch employee name first
-    c.execute("SELECT name FROM users WHERE user_id=?", (user_id,))
-    res = c.fetchone()
-    emp_name = res[0] if res else 'Unknown'
-
-    c.execute("SELECT check_in FROM attendance WHERE user_id=? AND date = CAST(GETDATE() AS DATE)", (user_id,))
+    # 1. Check if user exists (FK constraint validation)
+    c.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
     if not c.fetchone():
-        c.execute("""INSERT INTO attendance (user_id, employee_name, date, check_in, status, late_reason)
-                     VALUES (?, ?, CAST(GETDATE() AS DATE), ?, ?, ?)""", (user_id, emp_name, now, status, late_reason))
+        # 3. If not exists: insert user first
+        print(f"DEBUG: User {user_id} not found in users table. Creating 'Temp User' placeholder.")
+        c.execute("INSERT INTO users (user_id, name) VALUES (?, ?)", (user_id, 'Temp User'))
+        conn.commit()
+
+    # 5. If record already exists, update instead of insert
+    c.execute("SELECT * FROM attendance WHERE user_id=? AND date = CAST(GETDATE() AS DATE)", (user_id,))
+    if c.fetchone():
+        c.execute("""UPDATE attendance SET check_in=?, status=?, late_reason=? 
+                     WHERE user_id=? AND date = CAST(GETDATE() AS DATE)""", 
+                  (now, status, late_reason, user_id))
+    else:
+        c.execute("""INSERT INTO attendance (user_id, date, check_in, status, late_reason)
+                     VALUES (?, CAST(GETDATE() AS DATE), ?, ?, ?)""", 
+                  (user_id, now, status, late_reason))
     conn.commit()
     conn.close()
 
@@ -521,7 +587,7 @@ def get_notifications(user_id):
     conn = get_conn()
     c = conn.cursor()
     # Fetch Notifications from the new table
-    c.execute("SELECT TOP 10 * FROM notifications WHERE user_id=? ORDER BY created_at DESC", (user_id,))
+    c.execute("SELECT TOP 10 * FROM notifications WHERE recipient_id=? ORDER BY created_at DESC", (user_id,))
     notes = _rows_to_dicts(c, c.fetchall())
     
     # Optional: include Pending Leave requests for Admin as notifications
@@ -546,7 +612,7 @@ def get_notifications(user_id):
 def add_notification(recipient_id, message, type='info', project_id=None):
     conn = get_conn()
     c = conn.cursor()
-    c.execute("INSERT INTO notifications (user_id, message, type, project_id) VALUES (?, ?, ?, ?)", 
+    c.execute("INSERT INTO notifications (recipient_id, message, type, project_id) VALUES (?, ?, ?, ?)", 
                (recipient_id, message, type, project_id))
     conn.commit()
     conn.close()
@@ -735,13 +801,13 @@ def get_employee_analytics(user_id):
 
     # 2. Weekly Summary Stats
     c.execute("""SELECT status, COUNT(*), SUM(working_hours) FROM attendance
-                 WHERE user_id=? AND date>=? GROUP BY status""", (employee_id, week_start))
+                 WHERE user_id=? AND date>=? GROUP BY status""", (user_id, week_start))
     w_rows = c.fetchall()
     present_w = sum(r[1] for r in w_rows if r[0].lower() == 'present')
     late_w = sum(r[1] for r in w_rows if r[0].lower() == 'late')
     hours_w = round(sum(r[2] or 0 for r in w_rows), 1)
     
-    c.execute("SELECT COUNT(*) FROM leave_requests WHERE user_id=? AND status='Approved' AND from_date>=?", (employee_id, week_start))
+    c.execute("SELECT COUNT(*) FROM leave_requests WHERE user_id=? AND status='Approved' AND from_date>=?", (user_id, week_start))
     leaves_w = c.fetchone()[0] or 0
 
     # 3. Monthly Attendance Distribution (Donut)
@@ -801,10 +867,10 @@ def create_project_assignment(data):
     conn = get_conn()
     c = conn.cursor()
     # Insert Project
-    c.execute("""INSERT INTO projects (title, members_wanted, deadline, created_by)
+    c.execute("""INSERT INTO projects (title, description, members_wanted, deadline, created_by)
                  OUTPUT INSERTED.id
-                 VALUES (?, ?, ?, ?)""",
-              (data['title'], data['members_wanted'], data['deadline'], data['created_by']))
+                 VALUES (?, ?, ?, ?, ?)""",
+              (data['title'], data.get('description', ''), data['members_wanted'], data['deadline'], data['created_by']))
     project_id = c.fetchone()[0]
     
     # Get All Employees
@@ -866,12 +932,24 @@ def get_projects_for_employee(user_id):
 def get_employee_project_tasks(user_id):
     conn = get_conn()
     c = conn.cursor()
+    # Fetch ALL projects with capacity tracking and user status
     c.execute("""
-        SELECT pi.*, p.title, p.deadline, p.members_wanted
-        FROM project_interest pi
-        JOIN projects p ON pi.project_id = p.id
-        WHERE pi.user_id = ?
-        ORDER BY pi.created_at DESC
+        SELECT 
+            p.id as project_id,
+            p.title,
+            p.description,
+            p.deadline,
+            p.members_wanted as members_wanted,
+            (SELECT COUNT(*) FROM project_interest WHERE project_id = p.id AND status = 'accepted') as accepted_count,
+            CASE 
+                WHEN (SELECT COUNT(*) FROM project_interest WHERE project_id = p.id AND status = 'accepted') >= p.members_wanted 
+                THEN 'FULL' 
+                ELSE 'OPEN' 
+            END as project_status,
+            COALESCE(pi.status, 'pending') as status
+        FROM projects p
+        LEFT JOIN project_interest pi ON p.id = pi.project_id AND pi.user_id = ?
+        ORDER BY p.created_at DESC
     """, (user_id,))
     rows = _rows_to_dicts(c, c.fetchall())
     conn.close()

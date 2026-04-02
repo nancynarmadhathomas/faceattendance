@@ -179,10 +179,10 @@ async function deleteEmployee(id) {
       showToast('Success');
       document.getElementById(`erow-${id}`)?.remove();
     } else {
-      showToast('Failed', 'error');
+      console.error('Delete failed:', data.error);
     }
   } catch (err) {
-    showToast('Failed', 'error');
+    console.error('Network error during delete:', err);
   }
 }
 
