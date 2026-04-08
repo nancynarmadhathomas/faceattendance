@@ -1,6 +1,9 @@
 // ── Camera ──────────────────────────────────────────────────────
 const video = document.getElementById('video');
 let stream;
+let scanInterval;
+let isLoginTriggered = false;
+let isVerifying = false;
 
 async function startCamera() {
   const constraints = { 
@@ -28,23 +31,41 @@ async function startCamera() {
       video.onloadedmetadata = () => video.play();
     } catch(e2) {
       showToast('Camera access denied. Please allow camera permissions in your browser settings.', 'danger');
-      document.getElementById('capture-btn').disabled = true;
     }
+  }
+  
+  // Start auto-scan once camera is active
+  if (stream && !scanInterval) {
+    scanInterval = setInterval(() => {
+      if (!isLoginTriggered && !isVerifying) {
+        captureAndVerify();
+      }
+    }, 1500);
   }
 }
 
 function stopCamera() {
   if (stream) stream.getTracks().forEach(t => t.stop());
+  if (scanInterval) {
+    clearInterval(scanInterval);
+    scanInterval = null;
+  }
 }
 
 // ── Capture ──────────────────────────────────────────────────────
-document.getElementById('capture-btn').onclick = captureAndVerify;
+function updateStatus(text, type = 'primary') {
+  const lbl = document.getElementById('status-label');
+  if (!lbl) return;
+  lbl.textContent = text;
+  lbl.style.color = type === 'success' ? '#10b981' : (type === 'danger' ? '#ef4444' : '#6366f1');
+}
 
 async function captureAndVerify() {
-  const btn = document.getElementById('capture-btn');
-  btn.disabled = true;
-  btn.textContent = '🔄 Verifying...';
-  showToast('Analyzing face...', 'info');
+  if (isLoginTriggered || isVerifying) return;
+  
+  isVerifying = true;
+  updateStatus('Analyzing...');
+  document.getElementById('register-prompt').style.display = 'none';
 
   const canvas = document.createElement('canvas');
   canvas.width  = video.videoWidth  || 640;
@@ -61,22 +82,25 @@ async function captureAndVerify() {
     const result = await res.json();
 
     if (result.success) {
+      isLoginTriggered = true;
       stopCamera();
+      updateStatus('Login successful', 'success');
       showToast(`✅ Welcome, ${result.name}! Redirecting...`, 'success');
       setTimeout(() => window.location.href = result.redirect, 1000);
     } else {
-      showToast('❌ ' + (result.message || 'Face not recognized.'), 'danger');
+      updateStatus('Looking for face...');
+      
       // Show register prompt if face not registered
       if (result.message && result.message.toLowerCase().includes('not registered')) {
+        showToast('❌ ' + result.message, 'danger');
         document.getElementById('register-prompt').style.display = 'block';
       }
-      btn.disabled = false;
-      btn.textContent = '📷 Verify Face';
+      isVerifying = false;
     }
   } catch(e) {
-    showToast('Server error. Please try again.', 'danger');
-    btn.disabled = false;
-    btn.textContent = '📷 Verify Face';
+    console.error(e);
+    updateStatus('Looking for face...');
+    isVerifying = false;
   }
 }
 

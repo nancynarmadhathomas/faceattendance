@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter_lucide/flutter_lucide.dart';
@@ -18,6 +19,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   CameraController? _controller;
   bool _isInit = false;
   bool _isVerifying = false;
+  bool _isLoginTriggered = false;
+  Timer? _scanTimer;
+  String _statusLabel = 'Looking for face...';
   String? _message;
   String? _messageType;
   bool _showRegisterPrompt = false;
@@ -48,15 +52,28 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
     try {
       await _controller!.initialize();
-      setState(() => _isInit = true);
+      if (mounted) {
+        setState(() => _isInit = true);
+        _startAutoScan();
+      }
     } catch (e) {
       _showToast('Camera access denied. Enable permissions.', 'danger');
     }
   }
 
+  void _startAutoScan() {
+    _scanTimer?.cancel();
+    _scanTimer = Timer.periodic(const Duration(milliseconds: 1200), (timer) {
+      if (!_isLoginTriggered && _isInit && !_isVerifying && mounted) {
+        _captureAndVerify();
+      }
+    });
+  }
+
   @override
   void dispose() {
     _controller?.dispose();
+    _scanTimer?.cancel();
     _scanController.dispose();
     super.dispose();
   }
@@ -69,12 +86,12 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   }
 
   Future<void> _captureAndVerify() async {
-    if (_controller == null || !_controller!.value.isInitialized) return;
+    if (_controller == null || !_controller!.value.isInitialized || _isLoginTriggered) return;
 
     setState(() {
       _isVerifying = true;
       _showRegisterPrompt = false;
-      _showToast('Analyzing face...', 'info');
+      _statusLabel = 'Analyzing...';
     });
 
     try {
@@ -85,20 +102,33 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       final res = await ApiService.verifyFace(b64);
 
       if (res['success'] == true) {
-        _showToast('✅ Welcome, ${res['name']}! Redirecting...', 'success');
+        _isLoginTriggered = true;
+        _scanTimer?.cancel();
+        setState(() => _statusLabel = 'Login successful');
+        
+        // Stop camera immediately for better performance
+        _controller?.dispose();
+        _controller = null;
+
         Future.delayed(const Duration(seconds: 1), () {
           if (mounted) Navigator.pushReplacementNamed(context, '/dashboard');
         });
       } else {
-        _showToast('❌ ${res['message'] ?? 'Face not recognized.'}', 'danger');
+        setState(() {
+          _statusLabel = 'Looking for face...';
+        });
+
         if (res['message']?.toString().toLowerCase().contains('not registered') ?? false) {
+          _showToast('❌ ${res['message']}', 'danger');
           setState(() => _showRegisterPrompt = true);
         }
         setState(() => _isVerifying = false);
       }
     } catch (e) {
-      _showToast('Server error. Please try again.', 'danger');
-      setState(() => _isVerifying = false);
+      setState(() {
+        _statusLabel = 'Looking for face...';
+        _isVerifying = false;
+      });
     }
   }
 
@@ -229,8 +259,17 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                               ),
                             ),
                             const SizedBox(height: 20),
+                            Text(
+                              _statusLabel,
+                              style: TextStyle(
+                                color: _statusLabel == 'Login successful' ? AppColors.success : AppColors.primaryLight,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
                             const Text(
-                              '"Align your face inside the circle"',
+                              '"Position your face inside the ring"',
                               style: TextStyle(color: AppColors.muted, fontStyle: FontStyle.italic, fontSize: 13),
                             ),
                           ],
@@ -239,13 +278,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                       if (_message != null) _buildToast(),
                       if (_showRegisterPrompt) _buildRegisterPrompt(),
                       const SizedBox(height: 24),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: _isVerifying ? null : _captureAndVerify,
-                          child: Text(_isVerifying ? '🔄 Verifying...' : '📷 Verify Face'),
-                        ),
-                      ),
+                      // Automatic identification is active
                       const SizedBox(height: 16),
                       Center(
                         child: Column(
