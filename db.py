@@ -538,14 +538,16 @@ def get_meetings_for_employee(user_id):
     conn = get_conn()
     c = conn.cursor()
     today = date.today().isoformat()
-    # Use case-insensitive match for the ID
-    c.execute("""SELECT * FROM meetings
-                 WHERE meeting_date >= ?
-                 AND (user_id IS NULL OR LOWER(user_id) = LOWER(?))
-                 ORDER BY meeting_date, meeting_time""", (today, user_id))
+    # Fetch meetings with attendance status
+    c.execute("""SELECT m.*, ma.status as attendance_status 
+                 FROM meetings m
+                 LEFT JOIN meeting_attendance ma ON m.id = ma.meeting_id AND ma.user_id = ?
+                 WHERE m.meeting_date >= ?
+                 AND (m.user_id IS NULL OR LOWER(m.user_id) = LOWER(?))
+                 ORDER BY m.meeting_date, m.meeting_time""", (user_id, today, user_id))
     rows = _rows_to_dicts(c, c.fetchall())
     
-    # Also fetch the response status for each meeting
+    # Also fetch the response status for each meeting (Accepted/Declined)
     for r in rows:
         c.execute("SELECT status, reason FROM meeting_responses WHERE meeting_id=? AND user_id=?", (r['id'], user_id))
         res = c.fetchone()

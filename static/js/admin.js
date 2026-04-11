@@ -277,7 +277,8 @@ function getVisibleTableData(tableId) {
 
 async function exportDashboardToPDF() {
   const { jsPDF } = window.jspdf;
-  const container = document.querySelector('.admin-main');
+  const container = document.querySelector('.main-content') || document.querySelector('.dash-main') || document.querySelector('.admin-main');
+  
   if (!container) {
     showToast("Export target container not found", "error");
     return;

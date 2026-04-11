@@ -117,21 +117,18 @@
           </button>
           
           <div id="notificationDropdown" class="notification-dropdown">
-            <div class="notification-header">
-              <h4>Activity Feed</h4>
-              <span class="badge">{{ notifs | length }} New</span>
-            </div>
             <div style="max-height: 400px; overflow-y: auto;">
               {% for n in notifs %}
-              <div class="notification-item">
-                <div class="notif-msg">{{ n.message }}</div>
-                <div class="notif-time">{{ n.created_at }}</div>
+              <div class="notification-item" onclick="handleNotificationClick('{{ n.message }}', '{{ n.type }}', '{{ n.project_id }}', this)">
+                <div class="notif-icon"><i data-lucide="{{ 'briefcase' if n.type == 'project' else 'bell' }}"></i></div>
+                <div class="notif-body">
+                  <div class="notif-msg">{{ n.message }}</div>
+                  <div class="notif-time">{{ n.created_at }}</div>
+                </div>
               </div>
               {% endfor %}
               {% if not notifs %}
-              <div style="padding: 30px; text-align: center; color: var(--text-dim); font-size: 13px;">
-                No recent activity.
-              </div>
+              <div class="notification-empty">No new notifications</div>
               {% endif %}
             </div>
           </div>
@@ -140,8 +137,8 @@
         <button id="theme-toggle-btn" onclick="toggleAdminTheme()" class="btn-checkout" style="padding: 10px; border-radius: 50%; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center">
           <i data-lucide="sun" id="theme-icon" style="width:18px;height:18px"></i>
         </button>
-        <button onclick="exportDashboardToPDF()" class="btn-checkout">
-          <i data-lucide="download-cloud" style="width:16px;height:16px;margin-right:8px"></i>Export PDF
+        <button onclick="exportDashboardToPDF()" class="btn-checkout" title="Export PDF Report" style="padding: 10px; border-radius: 50%; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center">
+          <i data-lucide="download" style="width:18px;height:18px"></i>
         </button>
         <div class="admin-menu">
           <button id="adminBtn" class="btn-primary" style="padding: 8px 18px; border-radius: 10px; font-size: 14px">

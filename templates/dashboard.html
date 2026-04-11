@@ -132,32 +132,59 @@
       <div style="font-size:1.1rem;font-family:monospace;font-weight:700;text-align:center;letter-spacing:.08em" id="live-time"></div>
     </div>
 
-    <!-- RIGHT: Today status + clock action + theme toggle -->
-    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
+    <!-- RIGHT: Header Actions -->
+    <div class="header-actions">
+      <!-- Notifications (Only on Overview) -->
+      {% if active_tab == 'overview' or not active_tab %}
+      <div class="dropdown-container">
+        <button onclick="toggleNotifications()" class="notification-btn" title="View Notifications">
+          <i data-lucide="bell" style="width:18px;height:18px"></i>
+          {% if notifs | length > 0 %}
+          <span class="notif-badge"></span>
+          {% endif %}
+        </button>
+        <div id="notificationDropdown" class="notification-dropdown">
+          <div class="notification-list">
+            {% for n in notifs %}
+            <div class="notification-item" onclick="handleNotificationClick('{{ n.message }}', '{{ n.type }}', '{{ n.project_id }}', this)">
+              <div class="notif-icon"><i data-lucide="{{ 'briefcase' if n.type == 'project' else 'bell' }}"></i></div>
+              <div class="notif-body">
+                <div class="notif-msg">{{ n.message }}</div>
+                <div class="notif-time">{{ n.created_at }}</div>
+              </div>
+            </div>
+            {% endfor %}
+            {% if not notifs %}
+            <div class="notification-empty">No new notifications</div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
       <!-- Theme Toggle -->
-      <button id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Light/Dark Mode"
-              style="background:none;border:1px solid var(--border);border-radius:20px;padding:4px 10px;cursor:pointer;font-size:.75rem;font-weight:600;color:var(--muted);display:flex;align-items:center;gap:5px;transition:all .2s">
-        <span id="theme-icon"><i data-lucide="sun" style="width:14px;height:14px"></i></span>
-        <span id="theme-label">Light Mode</span>
+      <button id="theme-toggle-btn" class="theme-toggle" onclick="toggleTheme()" title="Toggle Light/Dark Mode">
+        <i data-lucide="sun" id="theme-icon" style="width:18px;height:18px"></i>
       </button>
 
-      <div id="topbar-status-container" style="display:flex;align-items:center;gap:15px">
-        <div id="action-btn-container">
-          {% if not today %}
-            <button id="checkin-btn" onclick="doCheckin()" class="btn-checkout" style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;border-color:transparent">
-              <i data-lucide="clock" style="width:14px;height:14px;vertical-align:middle;margin-right:4px"></i>Clock In
-            </button>
-          {% elif today and not checked_out %}
-            <button id="checkout-btn" onclick="doCheckout()" class="btn-checkout">
-              <i data-lucide="log-out" style="width:14px;height:14px;vertical-align:middle;margin-right:4px"></i>Clock Out
-            </button>
-          {% elif today and checked_out %}
-            <div class="badge-pill badge-muted">Clocked out · {{ fmt_time(checked_out) }}</div>
-            <div id="checkout-msg" style="margin-top:8px;font-size:0.75rem;color:var(--success);font-weight:600">
-               {% if today_hours %}You worked {{ today_hours }} hours today.{% endif %}
-            </div>
-          {% endif %}
-        </div>
+      <!-- Export PDF (Circular icon style) -->
+      <button class="notification-btn" onclick="exportPDF()" title="Export PDF Report">
+        <i data-lucide="download" style="width:18px;height:18px"></i>
+      </button>
+
+      <!-- Today status + clock action -->
+      <div id="action-btn-container" style="display:flex;align-items:center;gap:12px">
+        {% if not today %}
+          <button id="checkin-btn" onclick="doCheckin()" class="btn-checkout" style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;border-color:transparent">
+            <i data-lucide="clock" style="width:14px;height:14px;vertical-align:middle;margin-right:4px"></i>Clock In
+          </button>
+        {% elif today and not checked_out %}
+          <button id="checkout-btn" onclick="doCheckout()" class="btn-checkout clockout-btn">
+            <i data-lucide="log-out" style="width:14px;height:14px;vertical-align:middle;margin-right:4px"></i>Clock Out
+          </button>
+        {% elif today and checked_out %}
+          <div class="badge-pill badge-muted">Clocked out · {{ fmt_time(checked_out) }}</div>
+        {% endif %}
       </div>
     </div>
 
@@ -469,36 +496,35 @@
             <div class="meet-card-title">{{ m.title }}</div>
             
             {% if m.meeting_type == 'Virtual' %}
-              <div class="meet-card-desc" style="color:var(--primary-light); overflow:hidden; text-overflow:ellipsis; white-space:nowrap">
+              <div class="meet-card-desc" style="color:var(--primary-light); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-bottom:8px">
                 <i data-lucide="link" style="width:12px;height:12px;margin-right:4px"></i>{{ m.meeting_link }}
               </div>
             {% else %}
-              <div class="meet-card-desc" style="color:var(--warn)">
-                <i data-lucide="map-pin" style="width:12px;height:12px;margin-right:4px"></i>{{ m.meeting_location }}
+              <div class="meet-card-desc" style="color:var(--warn); margin-bottom:8px">
+                <i data-lucide="map-pin" style="width:12px;height:12px;margin-right:4px"></i>{{ m.location or 'No location set' }}
               </div>
             {% endif %}
 
-            <div class="meet-card-who" style="margin-bottom:12px">
-              {% if m.user_id and m.user_id == emp.user_id %}
-                <i data-lucide="user" style="width:12px;height:12px;vertical-align:middle;margin-right:4px"></i>Assigned to you
-              {% else %}
-                <i data-lucide="users" style="width:12px;height:12px;vertical-align:middle;margin-right:4px"></i>All employees
-              {% endif %}
+            <div class="meet-status-info" style="font-size:0.78rem; margin-bottom:12px">
+              <span style="color:var(--muted)">Status:</span> 
+              <strong id="meet-status-{{ m.id }}">{{ m.attendance_status or 'Not Present' }}</strong>
             </div>
 
             <div class="meet-actions" style="display:flex;gap:8px;border-top:1px solid var(--border);padding-top:12px">
               {% if m.attendance_status == 'Present' or m.attendance_status == 'Attended' %}
-                <span class="pill pill-present" style="width:100%;text-align:center;padding:8px">
-                  <i data-lucide="check-circle" style="width:14px;height:14px;margin-right:6px;vertical-align:middle"></i>Attended
-                </span>
-              {% elif m.meeting_type == 'Virtual' %}
-                <button onclick="joinMeeting('{{ m.id }}', '{{ m.meeting_link }}')" class="btn btn-primary btn-sm" style="flex:1;font-weight:700">
-                  <i data-lucide="video" style="width:14px;height:14px;margin-right:6px;vertical-align:middle"></i>Join Meeting
+                <button class="presented-btn" style="width:100%">
+                  <i data-lucide="check" style="width:14px;height:14px;margin-right:6px;vertical-align:middle"></i>Present
                 </button>
               {% else %}
-                <button onclick="markMeetingPresent('{{ m.id }}')" class="btn btn-success btn-sm" style="flex:1;font-weight:700;background:var(--success);color:#fff">
-                  <i data-lucide="user-check" style="width:14px;height:14px;margin-right:6px;vertical-align:middle"></i>Mark Present
-                </button>
+                {% if m.meeting_type == 'Virtual' %}
+                  <button onclick="joinMeeting('{{ m.id }}', '{{ m.meeting_link }}')" class="btn btn-primary btn-sm" style="flex:1;font-weight:700">
+                    <i data-lucide="video" style="width:14px;height:14px;margin-right:6px;vertical-align:middle"></i>Join Meeting
+                  </button>
+                {% else %}
+                  <button id="mark-btn-{{ m.id }}" onclick="markMeetingPresent('{{ m.id }}')" class="present-btn" style="flex:1;font-weight:700">
+                    Mark Present
+                  </button>
+                {% endif %}
               {% endif %}
             </div>
           </div>
@@ -778,10 +804,10 @@
       </div>
     </div>
 
-    <div class="grid-2">
+    <div class="project-work-container">
       {% for p in project_tasks %}
       {% if p.status == 'pending' or p.status == 'accepted' or p.status == 'declined' %}
-      <div class="dash-card">
+      <div class="dash-card project-card">
         <div class="card-header" style="padding-bottom:10px">
           <span id="p-title-{{ p.project_id }}" class="card-title" style="font-size:1.05rem">{{ p.title }}</span>
           <div style="display:flex; gap:8px; align-items:center">
@@ -1025,6 +1051,23 @@
     }
   }
 
+  function toggleNotifications() {
+    const dropdown = document.getElementById('notificationDropdown');
+    if (dropdown) dropdown.classList.toggle('show');
+  }
+
+  function exportPDF() {
+    window.print(); // Simple fallback, can be linked to a real /export route
+  }
+
+  // Close dropdown on click outside
+  window.addEventListener('click', (e) => {
+    const dropdown = document.getElementById('notificationDropdown');
+    if (dropdown && !e.target.closest('.dropdown-container')) {
+      dropdown.classList.remove('show');
+    }
+  });
+
   async function submitProjectResponsePage(pid, status) {
     const resp = await fetch('/employee/project/respond', {
       method: 'POST',
@@ -1056,6 +1099,50 @@
     } else {
       showToast("Error submitting response", "error");
     }
+  }
+
+  async function markMeetingPresent(mid) {
+    const btn = document.getElementById(`mark-btn-${mid}`);
+    if(!btn) return;
+    
+    // UI Update immediately for responsiveness
+    btn.innerHTML = 'Marking...';
+    btn.disabled = true;
+
+    try {
+      const resp = await fetch('/api/meeting/attend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ meeting_id: mid, status: 'Present' })
+      });
+      const res = await resp.json();
+      if (res.success) {
+        // Success state
+        btn.innerHTML = '<i data-lucide="check" style="width:14px;height:14px;margin-right:6px;vertical-align:middle"></i>Present';
+        btn.className = 'presented-btn';
+        document.getElementById(`meet-status-${mid}`).innerText = 'Present';
+        if (window.lucide) lucide.createIcons();
+        showToast("Attendance marked successfully", "success");
+      } else {
+        btn.innerHTML = 'Mark Present';
+        btn.disabled = false;
+        showToast(res.message || "Failed to mark attendance", "error");
+      }
+    } catch (e) {
+      btn.innerHTML = 'Mark Present';
+      btn.disabled = false;
+      showToast("Connection error", "error");
+    }
+  }
+
+  function joinMeeting(mid, link) {
+    // Also mark as 'Attended' for virtual meetings
+    fetch('/api/meeting/attend', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ meeting_id: mid, status: 'Attended' })
+    });
+    window.open(link, '_blank');
   }
 </script>
 

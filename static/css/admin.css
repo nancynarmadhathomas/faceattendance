@@ -648,13 +648,14 @@ body.light-mode .stat-tile { box-shadow: 0 2px 12px rgba(0,0,0,.06); }
   position: absolute;
   right: 0;
   top: 45px;
-  width: 320px;
-  background: #111827;
+  width: 260px;
+  background: #0f172a;
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 12px;
+  padding: 16px;
   display: none;
-  box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+  text-align: center;
+  box-shadow: 0 15px 35px rgba(0,0,0,0.4);
   z-index: 1000;
 }
 
@@ -662,48 +663,66 @@ body.light-mode .stat-tile { box-shadow: 0 2px 12px rgba(0,0,0,.06); }
   display: block;
 }
 
-.notification-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 4px 8px 12px 8px;
-  border-bottom: 1px solid rgba(255,255,255,0.05);
-  margin-bottom: 8px;
-}
-
-.notification-header h4 {
-  margin: 0;
-  font-size: 0.9rem;
-  font-weight: 700;
-  color: #fff;
+.notification-empty {
+  color: var(--muted);
+  font-size: 0.85rem;
+  padding: 8px 0;
 }
 
 .notification-item {
-  padding: 12px 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
   border-bottom: 1px solid rgba(255,255,255,0.05);
   font-size: 13px;
-  color: var(--text-dim);
-  transition: background 0.2s;
+  transition: all 0.2s ease;
   cursor: pointer;
+  text-align: left;
 }
 
 .notification-item:hover {
   background: rgba(255,255,255,0.03);
+  transform: translateX(4px);
 }
 
 .notification-item:last-child {
   border-bottom: none;
 }
 
-.notification-item .notif-msg {
-  color: #e2e8f0;
-  line-height: 1.4;
+.notif-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(99,102,241,0.1);
+  color: var(--primary-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
-.notification-item .notif-time {
+.notif-icon i {
+  width: 16px;
+  height: 16px;
+}
+
+.notif-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.notif-msg {
+  color: #e2e8f0;
+  line-height: 1.4;
+  margin-bottom: 2px;
+  font-weight: 500;
+}
+
+.notif-time {
   font-size: 11px;
-  opacity: 0.5;
-  margin-top: 4px;
+  color: var(--muted);
+  opacity: 0.6;
 }
 
 /* ── Meetings Grid (High-Fidelity Restored Layout) ── */
