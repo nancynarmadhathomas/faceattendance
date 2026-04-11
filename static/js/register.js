@@ -10,11 +10,19 @@ function selectRole(role) {
     empCard.style.borderColor  = 'var(--primary)';
     adminCard.style.background = 'var(--surface2)';
     adminCard.style.borderColor= 'var(--border)';
+    
+    // Dynamic updates
+    document.getElementById('id_label').innerText = 'Employee ID *';
+    document.getElementById('emp_id').placeholder = 'e.g. EMP-001';
   } else {
     adminCard.style.background  = 'rgba(139,92,246,.15)';
     adminCard.style.borderColor = '#8b5cf6';
     empCard.style.background    = 'var(--surface2)';
     empCard.style.borderColor   = 'var(--border)';
+    
+    // Dynamic updates
+    document.getElementById('id_label').innerText = 'Admin ID *';
+    document.getElementById('emp_id').placeholder = 'e.g. ADM-001';
   }
 }
 
@@ -23,6 +31,16 @@ function goStep2() {
   const name = document.getElementById('emp_name').value.trim();
   const pass = document.getElementById('emp_pass').value;
   if (!id || !name || !pass) { alert('Please fill required fields (ID, Name, Password).'); return; }
+  
+  const role = document.getElementById('emp_role').value;
+  if (role === 'admin' && !id.startsWith('ADM-')) {
+    alert('⚠️ Admin ID must start with ADM- (e.g. ADM-001)');
+    return;
+  }
+  if (role === 'employee' && !id.startsWith('EMP-')) {
+    alert('⚠️ Employee ID must start with EMP- (e.g. EMP-001)');
+    return;
+  }
 
   document.getElementById('step1').classList.add('hidden');
   document.getElementById('step2').classList.remove('hidden');

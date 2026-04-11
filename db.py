@@ -51,9 +51,21 @@ def init_db():
                description NVARCHAR(MAX),
                meeting_date DATE NOT NULL,
                meeting_time VARCHAR(10) NOT NULL,
+               meeting_type VARCHAR(20) DEFAULT 'Physical',
+               meeting_link VARCHAR(MAX),
+               location NVARCHAR(255),
                user_id VARCHAR(50),
                created_by VARCHAR(50) DEFAULT 'admin',
                created_at DATETIME DEFAULT GETDATE()
+           )""",
+        """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='meeting_attendance' and xtype='U')
+           CREATE TABLE meeting_attendance (
+               id INT IDENTITY(1,1) PRIMARY KEY,
+               meeting_id INT NOT NULL,
+               user_id VARCHAR(50) NOT NULL,
+               status VARCHAR(20) DEFAULT 'Absent',
+               joined_at DATETIME DEFAULT GETDATE(),
+               UNIQUE(meeting_id, user_id)
            )""",
         """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='leave_requests' and xtype='U')
            CREATE TABLE leave_requests (
@@ -106,6 +118,16 @@ def init_db():
                created_at DATETIME DEFAULT GETDATE()
            )"""
     ]
+    # --- Migration: Add 'status' to 'projects' ---
+    try:
+        c.execute("SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('projects') AND name = 'status'")
+        if not c.fetchone():
+            print("Migrating 'projects' table: Adding 'status' column...")
+            c.execute("ALTER TABLE projects ADD status VARCHAR(50) DEFAULT 'Pending'")
+            conn.commit()
+    except Exception as e:
+        print(f"Migration error adding 'status' to projects: {e}")
+
     for stmt in tables:
         c.execute(stmt)
 
@@ -164,6 +186,31 @@ def init_db():
     except Exception as e:
         print(f"Migration error on notifications: {e}")
 
+    # --- Migration: Hybrid Meetings (type, link, location) ---
+    meeting_cols = [
+        ('meeting_type', "VARCHAR(20) DEFAULT 'Physical'"),
+        ('meeting_link', "VARCHAR(MAX)"),
+        ('location', "NVARCHAR(255)")
+    ]
+    for col_name, col_def in meeting_cols:
+        try:
+            c.execute(f"SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('meetings') AND name = '{col_name}'")
+            if not c.fetchone():
+                # Specialized Migration: Check if legacy 'meeting_location' exists to rename it instead of adding new
+                if col_name == 'location':
+                    c.execute("SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('meetings') AND name = 'meeting_location'")
+                    if c.fetchone():
+                        print("Migrating 'meetings' table: Renaming 'meeting_location' to 'location'...")
+                        c.execute("EXEC sp_rename 'meetings.meeting_location', 'location', 'COLUMN'")
+                        conn.commit()
+                        continue
+
+                print(f"Migrating 'meetings' table: Adding '{col_name}' column...")
+                c.execute(f"ALTER TABLE meetings ADD {col_name} {col_def}")
+                conn.commit()
+        except Exception as e:
+            print(f"Migration error adding '{col_name}' to meetings: {e}")
+
     # Check admin existence
     c.execute("SELECT user_id FROM users WHERE user_id='admin'")
     if not c.fetchone():
@@ -177,7 +224,14 @@ def _row_to_dict(cursor, row):
     if not row:
         return None
     cols = [col[0] for col in cursor.description]
-    return dict(zip(cols, row))
+    d = dict(zip(cols, row))
+    # Standardize: Convert all date/datetime/time to ISO strings for template/JSON safety
+    for k, v in d.items():
+        if isinstance(v, (date, datetime)):
+            d[k] = v.isoformat()
+        elif hasattr(v, 'isoformat') and not isinstance(v, str):
+            d[k] = v.isoformat()
+    return d
 
 def _rows_to_dicts(cursor, rows):
     if not rows: return []
@@ -290,7 +344,7 @@ def get_today_record(user_id):
     c = conn.cursor()
     c.execute("""SELECT TOP 1 * FROM attendance 
                  WHERE user_id=? AND date = CAST(GETDATE() AS DATE)
-                 ORDER BY id DESC""", (user_id,))
+                 ORDER BY check_in DESC""", (user_id,))
     row = _row_to_dict(c, c.fetchone())
     conn.close()
     return row
@@ -347,13 +401,45 @@ def log_checkout(user_id):
             check_in_dt = check_in_raw
             
         hours = round((now_dt - check_in_dt).total_seconds() / 3600, 2)
-        c.execute("UPDATE attendance SET check_out=?, working_hours=? WHERE user_id=? AND date=CAST(GETDATE() AS DATE)",
-                  (now_dt, hours, user_id))
+        
+        # New: Half Day logic (threshold: 4.5 hours)
+        status_update = "Present"
+        # Determine if it should be Half Day based on hours
+        if hours < 4.5:
+            status_update = "Half Day"
+        else:
+            # Keep existing 'Late' / 'Present' status if already set, but upgrade to Present if it was Half Day?
+            # Actually, the requirement says "If working hours completed → mark Present"
+            # It implies status can change based on hours.
+            pass
+
+        # We should fetch existing status to see if it was 'Late'
+        c.execute("SELECT status FROM attendance WHERE user_id=? AND date=CAST(GETDATE() AS DATE)", (user_id,))
+        existing_status = c.fetchone()
+        if existing_status and existing_status[0] == 'Late' and hours >= 4.5:
+            # If they were late but worked full day, we can keep 'Late' but they are still 'Present' in terms of full day?
+            # Usually 'Late' is a sub-status of 'Present'. 
+            # Requirement says: mark Present if hours completed.
+            status_update = "Late" # Keep Late if they were late
+        elif hours >= 4.5:
+            status_update = "Present"
+
+        c.execute("""UPDATE attendance SET check_out=?, working_hours=?, status=?
+                     WHERE user_id=? AND date=CAST(GETDATE() AS DATE) AND check_out IS NULL""",
+                  (now_dt, hours, status_update, user_id))
         conn.commit()
+        
+        # Return summary for email
+        res = {
+            'check_in':      check_in_dt.strftime('%I:%M %p'),
+            'check_out':     now_dt.strftime('%I:%M %p'),
+            'working_hours': hours,
+            'status':        status_update
+        }
         conn.close()
-        return hours
+        return res
     conn.close()
-    return 0
+    return None
 
 def update_late_reason(user_id, reason):
     conn = get_conn()
@@ -487,10 +573,28 @@ def get_all_meetings():
     c = conn.cursor()
     c.execute("SELECT * FROM meetings ORDER BY meeting_date DESC, meeting_time DESC")
     rows = _rows_to_dicts(c, c.fetchall())
+    
+    # Enrich with stats
+    for r in rows:
+        stats = get_meeting_analytics(r['id'])
+        r['stats'] = stats
+        
     conn.close()
     return rows
 
+def delete_meeting_by_id(meeting_id):
+    conn = get_conn()
+    c = conn.cursor()
+    # First delete responses to avoid foreign key issues (if any) or just clean up
+    c.execute("DELETE FROM meeting_responses WHERE meeting_id=?", (meeting_id,))
+    # Then delete meeting
+    c.execute("DELETE FROM meetings WHERE id=?", (meeting_id,))
+    conn.commit()
+    conn.close()
+    return True
+
 def delete_meeting(title, meeting_date, user_id):
+    """Old deletion method using composite keys (fallback)."""
     conn = get_conn()
     c = conn.cursor()
     c.execute("DELETE FROM meetings WHERE title=? AND meeting_date=? AND user_id=?", (title, meeting_date, user_id))
@@ -576,12 +680,71 @@ def get_upcoming_meetings(user_id):
     conn = get_conn()
     c = conn.cursor()
     today = date.today().isoformat()
-    c.execute("""SELECT TOP 5 * FROM meetings
-                 WHERE meeting_date >= ? AND (user_id IS NULL OR user_id = ?)
-                 ORDER BY meeting_date ASC, meeting_time ASC""", (today, user_id))
+    # Fetch meetings where user is assigned or it's for everyone (user_id IS NULL)
+    c.execute("""SELECT m.*, ma.status as attendance_status 
+                 FROM meetings m
+                 LEFT JOIN meeting_attendance ma ON m.id = ma.meeting_id AND ma.user_id = ?
+                 WHERE (m.user_id = ? OR m.user_id IS NULL) 
+                 AND m.meeting_date >= ?
+                 ORDER BY m.meeting_date ASC, m.meeting_time ASC""", (user_id, user_id, today))
     rows = _rows_to_dicts(c, c.fetchall())
     conn.close()
     return rows
+
+def add_admin_meeting(title, m_date, m_time, assigned_to=None, description=None, m_type='Physical', link=None, location=None, created_by='admin'):
+    # Clean up parameters based on meeting type for data integrity
+    if m_type.lower() == 'physical':
+        link = None
+    elif m_type.lower() == 'virtual':
+        location = None
+
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("""INSERT INTO meetings 
+                 (title, description, meeting_date, meeting_time, user_id, created_by, meeting_type, meeting_link, location) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""", 
+              (title, description, m_date, m_time, assigned_to, created_by, m_type, link, location))
+    conn.commit()
+    conn.close()
+    return True
+
+def mark_meeting_attendance(meeting_id, user_id, status='Present'):
+    conn = get_conn()
+    c = conn.cursor()
+    # Check if entry exists
+    c.execute("SELECT id FROM meeting_attendance WHERE meeting_id=? AND user_id=?", (meeting_id, user_id))
+    row = c.fetchone()
+    if row:
+        c.execute("UPDATE meeting_attendance SET status=?, joined_at=GETDATE() WHERE meeting_id=? AND user_id=?", (status, meeting_id, user_id))
+    else:
+        c.execute("INSERT INTO meeting_attendance (meeting_id, user_id, status) VALUES (?, ?, ?)", (meeting_id, user_id, status))
+    conn.commit()
+    conn.close()
+    return True
+
+def get_meeting_analytics(meeting_id):
+    conn = get_conn()
+    c = conn.cursor()
+    # Total Invited
+    c.execute("SELECT user_id FROM meetings WHERE id=?", (meeting_id,))
+    row = c.fetchone()
+    assigned = row[0] if row else None
+    
+    total_invited = 1 if assigned else 0
+    if not assigned:
+        c.execute("SELECT COUNT(*) FROM users WHERE role='employee'")
+        total_invited = c.fetchone()[0] or 0
+        
+    # Attended
+    c.execute("SELECT COUNT(*) FROM meeting_attendance WHERE meeting_id=? AND status='Present'", (meeting_id,))
+    attended = c.fetchone()[0] or 0
+    
+    conn.close()
+    return {
+        'total_invited': total_invited,
+        'attended': attended,
+        'absent': max(0, total_invited - attended)
+    }
 
 def get_notifications(user_id):
     conn = get_conn()
@@ -940,6 +1103,7 @@ def get_employee_project_tasks(user_id):
             p.description,
             p.deadline,
             p.members_wanted as members_wanted,
+            p.status as project_completion_status,
             (SELECT COUNT(*) FROM project_interest WHERE project_id = p.id AND status = 'accepted') as accepted_count,
             CASE 
                 WHEN (SELECT COUNT(*) FROM project_interest WHERE project_id = p.id AND status = 'accepted') >= p.members_wanted 
@@ -963,6 +1127,13 @@ def update_project_interest_status(project_id, user_id, status):
     conn.commit()
     conn.close()
 
+def update_project_completion_status(project_id, status):
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("UPDATE projects SET status = ? WHERE id = ?", (status, project_id))
+    conn.commit()
+    conn.close()
+
 # --- Specialized Analytics Helpers ---
 def get_live_status_analytics():
     conn = get_conn()
@@ -972,23 +1143,19 @@ def get_live_status_analytics():
     c.execute("SELECT COUNT(*) FROM attendance WHERE date = CAST(GETDATE() AS DATE) AND check_in IS NOT NULL AND check_out IS NULL")
     working = c.fetchone()[0] or 0
     
-    # 2. Clocked Out (Checked out today)
+    # 2. Clocked In (Total check-ins today)
+    c.execute("SELECT COUNT(*) FROM attendance WHERE date = CAST(GETDATE() AS DATE) AND check_in IS NOT NULL")
+    clocked_in = c.fetchone()[0] or 0
+    
+    # 3. Clocked Out (Checked out today)
     c.execute("SELECT COUNT(*) FROM attendance WHERE date = CAST(GETDATE() AS DATE) AND check_out IS NOT NULL")
     clocked_out = c.fetchone()[0] or 0
-    
-    # 3. Not Logged (Employees without attendance today)
-    # Exclude admins
-    c.execute("SELECT COUNT(*) FROM users WHERE role != 'admin'")
-    total_emps = c.fetchone()[0] or 0
-    c.execute("SELECT COUNT(DISTINCT user_id) FROM attendance WHERE date = CAST(GETDATE() AS DATE)")
-    checked_in_today = c.fetchone()[0] or 0
-    not_logged = max(0, total_emps - checked_in_today)
     
     conn.close()
     return {
         'working_now': working,
-        'clocked_out': clocked_out,
-        'not_logged': not_logged
+        'clocked_in': clocked_in,
+        'clocked_out': clocked_out
     }
 
 def get_avg_working_hours_analytics():

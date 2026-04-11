@@ -458,6 +458,8 @@ body[data-theme="light"] #theme-toggle-btn {
 .pill-present { background: rgba(16,185,129,.15); color: #10b981; }
 .pill-late    { background: rgba(245,158,11,.15);  color: #f59e0b; }
 .pill-absent  { background: rgba(239,68,68,.15);   color: #ef4444; }
+.pill-working { background: rgba(59,130,246,.15); color: #3b82f6; }
+.pill-clocked_out_today { background: rgba(107,114,128,.15); color: #9ca3af; }
 
 /* ── Meetings grid ── */
 .meetings-grid {
@@ -466,18 +468,55 @@ body[data-theme="light"] #theme-toggle-btn {
   gap: 14px;
 }
 .meet-card {
-  background: var(--card-bg);
+  background: var(--surface);
   border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  transition: all 0.2s ease;
   border-left: 3px solid var(--accent);
-  border-radius: 12px;
-  padding: 16px 18px;
 }
-.meet-card.meet-today { border-left-color: var(--success); }
-.meet-card-date  { font-size: .72rem; color: var(--muted); margin-bottom: 6px; }
-.meet-card-time  { font-size: .85rem; color: var(--accent); font-weight: 700; }
-.meet-card-title { font-size: .95rem; font-weight: 600; margin-top: 8px; }
-.meet-card-desc  { font-size: .8rem; color: var(--muted); margin-top: 6px; line-height: 1.5; }
-.meet-card-who   { font-size: .75rem; color: var(--accent); margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+
+.meet-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 25px rgba(0,0,0,0.4);
+}
+
+.meet-card.meet-today {
+  border-left-color: var(--success);
+}
+
+.meet-card-date {
+  font-size: .72rem;
+  color: var(--muted);
+}
+
+.meet-card-time {
+  font-size: .85rem;
+  color: var(--accent);
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+.meet-card-title {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 10px 0 6px;
+  color: var(--text);
+}
+
+.meet-card-desc {
+  font-size: .8rem;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.meet-card-who {
+  font-size: .75rem;
+  color: var(--text-dim);
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
 
 /* ── Profile page ── */
 .profile-grid {

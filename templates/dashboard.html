@@ -6,15 +6,18 @@
 <title>Dashboard — {{ emp.name }}</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/notifications.css') }}">
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+<script src="{{ url_for('static', filename='js/notifications.js') }}"></script>
 <script>
   window.DASHBOARD_STATE = {
-    checked_in: {{ 'true' if (today and not checked_out) else 'false' }},
-    status: "{{ today_status or 'absent' }}",
-    check_in_time: "{{ fmt_time(today_checkin) if today_checkin else '' }}",
-    check_out_time: "{{ fmt_time(today_checkout) if today_checkout else '' }}",
-    working_hours: {{ today_hours or 0 }}
+    checked_in: {{ 'true' if (today and not today.check_out) else 'false' }},
+    status: "{{ today.status or 'absent' }}",
+    check_in_time: "{{ fmt_time(today.check_in) if today and today.check_in else '' }}",
+    check_in_raw: "{{ today.check_in if today and today.check_in else '' }}",
+    check_out_time: "{{ fmt_time(today.check_out) if today and today.check_out else '' }}",
+    working_hours: {{ today.working_hours or 0 }}
   };
 </script>
 </head>
@@ -150,6 +153,9 @@
             </button>
           {% elif today and checked_out %}
             <div class="badge-pill badge-muted">Clocked out · {{ fmt_time(checked_out) }}</div>
+            <div id="checkout-msg" style="margin-top:8px;font-size:0.75rem;color:var(--success);font-weight:600">
+               {% if today_hours %}You worked {{ today_hours }} hours today.{% endif %}
+            </div>
           {% endif %}
         </div>
       </div>
@@ -167,8 +173,15 @@
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:16px;align-items:center">
         <div>
           <div class="stat-label">Today Status</div>
-          <span id="today-status-pill" class="pill pill-{{ today_status or 'absent' }}" style="margin-top:6px;display:inline-block">
-            {{ (today_status or 'absent')|title }}
+          {% set display_status = today.status or 'Absent' %}
+          {% if today and not today.check_out %}
+            {% set display_status = 'Working' %}
+          {% elif today and today.check_out %}
+            {% set display_status = 'Clocked Out Today' %}
+          {% endif %}
+          
+          <span id="today-status-pill" class="pill pill-{{ (today.status or 'absent').lower() }}" style="margin-top:6px;display:inline-block">
+            {{ display_status }}
           </span>
         </div>
         <div>
@@ -446,10 +459,25 @@
             {% set card_class = 'meet-card' %}
           {% endif %}
           <div class="{{ card_class }}">
-            <div class="meet-card-date"><i data-lucide="calendar" style="width:12px;height:12px;vertical-align:middle;margin-right:4px"></i>{{ m.meeting_date }}</div>
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+              <div class="meet-card-date"><i data-lucide="calendar" style="width:12px;height:12px;vertical-align:middle;margin-right:4px"></i>{{ m.meeting_date }}</div>
+              <span class="pill pill-{{ 'present' if m.meeting_type == 'Virtual' else 'late' }}" style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.5px">
+                {{ m.meeting_type }}
+              </span>
+            </div>
             <div class="meet-card-time"><i data-lucide="clock" style="width:12px;height:12px;vertical-align:middle;margin-right:4px"></i>{{ m.meeting_time }}</div>
             <div class="meet-card-title">{{ m.title }}</div>
-            {% if m.description %}<div class="meet-card-desc">{{ m.description }}</div>{% endif %}
+            
+            {% if m.meeting_type == 'Virtual' %}
+              <div class="meet-card-desc" style="color:var(--primary-light); overflow:hidden; text-overflow:ellipsis; white-space:nowrap">
+                <i data-lucide="link" style="width:12px;height:12px;margin-right:4px"></i>{{ m.meeting_link }}
+              </div>
+            {% else %}
+              <div class="meet-card-desc" style="color:var(--warn)">
+                <i data-lucide="map-pin" style="width:12px;height:12px;margin-right:4px"></i>{{ m.meeting_location }}
+              </div>
+            {% endif %}
+
             <div class="meet-card-who" style="margin-bottom:12px">
               {% if m.user_id and m.user_id == emp.user_id %}
                 <i data-lucide="user" style="width:12px;height:12px;vertical-align:middle;margin-right:4px"></i>Assigned to you
@@ -459,15 +487,18 @@
             </div>
 
             <div class="meet-actions" style="display:flex;gap:8px;border-top:1px solid var(--border);padding-top:12px">
-              {% if m.response_status %}
-                <span class="badge badge-{{ m.response_status | lower }}" style="padding:6px 12px;font-size:0.75rem">
-                   {{ m.response_status | capitalize }}
-                   {% if m.response_reason %}<div style="font-size:0.65rem;opacity:0.8;margin-top:2px">{{ m.response_reason }}</div>{% endif %}
+              {% if m.attendance_status == 'Present' or m.attendance_status == 'Attended' %}
+                <span class="pill pill-present" style="width:100%;text-align:center;padding:8px">
+                  <i data-lucide="check-circle" style="width:14px;height:14px;margin-right:6px;vertical-align:middle"></i>Attended
                 </span>
+              {% elif m.meeting_type == 'Virtual' %}
+                <button onclick="joinMeeting('{{ m.id }}', '{{ m.meeting_link }}')" class="btn btn-primary btn-sm" style="flex:1;font-weight:700">
+                  <i data-lucide="video" style="width:14px;height:14px;margin-right:6px;vertical-align:middle"></i>Join Meeting
+                </button>
               {% else %}
-                <button onclick="respondMeeting({{ m.id }}, 'accepted')" class="btn btn-success btn-sm" style="flex:1;font-size:0.7rem;padding:6px">Accept</button>
-                <button onclick="respondMeeting({{ m.id }}, 'tentative')" class="btn btn-warning btn-sm" style="flex:1;font-size:0.7rem;padding:6px;background:var(--warn);color:#000">Tentative</button>
-                <button onclick="openDeclineModal({{ m.id }})" class="btn btn-danger btn-sm" style="flex:1;font-size:0.7rem;padding:6px">Decline</button>
+                <button onclick="markMeetingPresent('{{ m.id }}')" class="btn btn-success btn-sm" style="flex:1;font-weight:700;background:var(--success);color:#fff">
+                  <i data-lucide="user-check" style="width:14px;height:14px;margin-right:6px;vertical-align:middle"></i>Mark Present
+                </button>
               {% endif %}
             </div>
           </div>
@@ -763,6 +794,10 @@
             {% if p.project_status == 'FULL' %}
               <span class="pill pill-absent" style="background:var(--danger); color:#fff; border:none">FULL</span>
             {% endif %}
+            
+            <span class="pill pill-{{ 'present' if p.project_completion_status == 'Completed' else 'late' }}" style="font-size:0.7rem">
+               {{ p.project_completion_status or 'Pending' }}
+            </span>
           </div>
         </div>
         <div style="padding:0 24px 20px">
@@ -986,7 +1021,7 @@
     if (type === 'project') {
       window.location.href = "/project-work";
     } else {
-      alert(msg);
+      showToast(msg, 'info');
     }
   }
 
@@ -1019,7 +1054,7 @@
         }, 2000);
       }
     } else {
-      alert("Error submitting response");
+      showToast("Error submitting response", "error");
     }
   }
 </script>

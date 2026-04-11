@@ -6,6 +6,7 @@ from flask_cors import CORS
 import numpy as np
 from deepface import DeepFace
 import db
+import email_service
 
 app = Flask(__name__)
 app.secret_key = 'face_attendance_secret_2026'
@@ -87,14 +88,16 @@ def compare_with_db(current_emb):
 
 
 # ---------------------------------------------------------------------------
-# Attendance helpers
+# Attendance helpers & Constants
 # ---------------------------------------------------------------------------
-CUTOFF = (9, 30)   # 09:30 AM
+SHIFT_START = (9, 30)   # 09:30 AM
+REQUIRED_HOURS = 9.0    # Standard working day
+HALF_DAY_THRESHOLD = 4.5
 
 
 def determine_status():
     now = datetime.now()
-    if (now.hour, now.minute) <= CUTOFF:
+    if (now.hour, now.minute) <= SHIFT_START:
         return 'Present'
     return 'Late'
 
@@ -325,7 +328,49 @@ def admin_project_create():
         'created_by': session.get('user_id')
     }
     db.create_project_assignment(data)
+    
+    # Notify all employees (as per requirement 5: All employees can view projects)
+    employees = db.get_all_employees()
+    for e in employees:
+        if e.get('email'):
+            email_service.notify_project_assigned(e['name'], e['email'], data['title'], data['deadline'])
+            
     return redirect(url_for('admin_projects'))
+
+@app.route('/api/projects/<int:pid>/complete', methods=['POST'])
+def api_complete_project(pid):
+    if session.get('role') != 'admin' and session.get('user_id') != 'admin':
+        return jsonify({'success': False}), 403
+    try:
+        print("Project completed:", pid)
+        db.update_project_completion_status(pid, 'Completed')
+        # Notify all (global notification for status change)
+        proj = db.get_project_details(pid, 'admin')
+        employees = db.get_all_employees()
+        for emp in employees:
+            db.add_notification(emp['user_id'], f"Project '{proj['title']}' has been marked as COMPLETED.")
+        return jsonify({'success': True, 'message': 'Project completed', 'status': 'Completed'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/project/status', methods=['POST'])
+def api_admin_project_status():
+    if session.get('role') != 'admin' and session.get('user_id') != 'admin':
+        return jsonify({'success': False}), 403
+    
+    data = request.json or {}
+    project_id = data.get('project_id')
+    status = data.get('status') # Pending / Completed
+    
+    db.update_project_completion_status(project_id, status)
+    
+    # Notify all employees of status change
+    employees = db.get_all_employees()
+    proj = db.get_project_details(project_id, 'admin') # get details for name
+    for emp in employees:
+        db.add_notification(emp['user_id'], f"Project '{proj['title']}' status updated to {status}")
+        
+    return jsonify({'success': True})
 
 @app.route('/employee/project/respond', methods=['POST'])
 def employee_project_respond():
@@ -428,8 +473,17 @@ def api_verify():
 def api_late_reason():
     if 'user_id' not in session:
         return jsonify({'success': False})
+    
+    user_id = session['user_id']
     reason = (request.json or {}).get('reason', '')
-    db.update_late_reason(session['user_id'], reason)
+    db.update_late_reason(user_id, reason)
+    
+    # Send Unified Late Email after reason is submission
+    emp = db.get_employee(user_id)
+    time_str = session.get('check_in_time', datetime.now().strftime('%I:%M %p'))
+    if emp and emp.get('email'):
+        email_service.send_late_email(emp['email'], emp['name'], user_id, time_str, reason)
+        
     return jsonify({'success': True})
 
 
@@ -443,19 +497,37 @@ def api_checkin():
         
         user_id = session['user_id']
         now = datetime.now()
+        
+        # 4.5. Check if already clocked in today (Requirement: One Clock-In Per Day)
+        today_rec = db.get_today_record(user_id)
+        if today_rec and today_rec.get('check_in'):
+            return jsonify({'success': False, 'message': 'You have already clocked in today'})
+
         status = determine_status()
         
-        # 5. If record already exists, update instead of insert (handled in db.log_checkin)
+        # 5. Log the check-in
         db.log_checkin(user_id, status=status)
         
-        # 7. Return success response
+        # 7. Send Email & Notifications
+        emp = db.get_employee(user_id)
+        if emp and emp.get('email'):
+            if status == 'Present':
+                # For Present, send email immediately
+                email_service.send_clockin_email(emp['email'], emp['name'], user_id, now.strftime('%I:%M %p'), 'Present')
+            elif status == 'Late':
+                # For Late, store time in session to be sent with the reason later
+                session['check_in_time'] = now.strftime('%I:%M %p')
+        
+        print("Clock-in email sent")
+
         return jsonify({
             'success':        True,
             'late':           status == 'Late',
             'status':         status,
             'checked_in':     True,
             'check_in_time':  now.strftime('%H:%M:%S'),
-            'working_hours':  0
+            'working_hours':  0,
+            'message':        f"Checked in successfully. Status: {status}"
         })
     except Exception as e:
         # 3. Print real error in console
@@ -533,14 +605,32 @@ def api_checkout():
         return jsonify({'success': False})
     
     now = datetime.now()
-    hours = db.log_checkout(session['user_id'])
+    summary = db.log_checkout(session['user_id'])
     
+    if not summary:
+        return jsonify({'success': False, 'message': 'No active session found.'})
+
+    # Send Email Summary
+    emp = db.get_employee(session['user_id'])
+    if emp and emp.get('email'):
+        email_service.send_checkout_email(
+            emp['email'], 
+            emp['name'], 
+            session['user_id'], 
+            summary['check_in'], 
+            summary['check_out'], 
+            summary['working_hours'], 
+            summary['status']
+        )
+        print("Clock-out email sent")
+
     return jsonify({
         'success':       True,
         'checked_in':    False,
-        'check_out_time': now.strftime('%H:%M:%S'),
-        'working_hours': hours,
-        'status':        'absent'
+        'check_out_time': summary['check_out'],
+        'working_hours': summary['working_hours'],
+        'status':        summary['status'],
+        'message':       f"Clocked Out Today. Total hours: {summary['working_hours']}h"
     })
 
 
@@ -554,8 +644,6 @@ def api_meetings():
 
 @app.route('/logout')
 def logout():
-    if session.get('user_id') and session.get('user_id') != 'admin':
-        db.log_checkout(session['user_id'])
     session.clear()
     return redirect(url_for('index'))
 
@@ -581,6 +669,12 @@ def api_submit_leave():
     })
     # Feature 3: Send notification to Admin
     db.add_notification('admin', f"{session.get('user_name', session['user_id'])} requested leave")
+    
+    # Send email notification to user
+    emp = db.get_employee(session['user_id'])
+    if emp and emp.get('email'):
+        email_service.notify_leave_submitted(emp['name'], emp['email'], leave_type, from_date, to_date)
+        
     return jsonify({'success': True})
 
 
@@ -601,6 +695,11 @@ def api_approve_leave():
     db.update_leave_status(uid, fdate, 'Approved')
     db.add_notification(uid, "Leave Approved")
     
+    # Send email notification
+    emp = db.get_employee(uid)
+    if emp and emp.get('email'):
+        email_service.notify_leave_status(emp['name'], emp['email'], 'Approved', fdate)
+        
     return jsonify({'success': True})
 
 
@@ -616,6 +715,11 @@ def api_reject_leave():
     db.update_leave_status(uid, fdate, 'Rejected')
     db.add_notification(uid, "Leave Rejected")
     
+    # Send email notification
+    emp = db.get_employee(uid)
+    if emp and emp.get('email'):
+        email_service.notify_leave_status(emp['name'], emp['email'], 'Rejected', fdate)
+        
     return jsonify({'success': True})
 # ── Admin Operations ────────────────────────────────────────────────────────
 @app.route('/api/admin/meeting', methods=['POST'])
@@ -623,23 +727,79 @@ def api_create_meeting():
     if session.get('role') != 'admin' and session.get('user_id') != 'admin':
         return jsonify({'success': False, 'message': 'Unauthorized'}), 403
     data = request.json or {}
-    if not data.get('title') or not data.get('date') or not data.get('time'):
+    title = data.get('title')
+    m_date = data.get('date')
+    m_time = data.get('time')
+    
+    if not title or not m_date or not m_time:
         return jsonify({'success': False, 'message': 'Title, date, and time are required.'})
-    user_id = (data.get('user_id') or '').strip()
-    db.create_meeting({
-        'title':       data['title'],
-        'date':        data['date'],
-        'time':        data['time'],
-        'description': data.get('description', ''),
-        'user_id':     user_id if user_id else None,
-        'created_by':  session.get('user_id')
-    })
+    
+    m_type = data.get('type', 'Physical')
+    link = data.get('link')
+    loc = data.get('location')
+    assigned_to = (data.get('user_id') or '').strip() or None
+    desc = data.get('description', '')
+
+    created_by = session.get('user_id', 'admin')
+    db.add_admin_meeting(title, m_date, m_time, assigned_to, desc, m_type, link, loc, created_by)
+    
+    # Notify
+    msg = f"New {m_type} Meeting: {title}"
+    if assigned_to:
+        db.add_notification(assigned_to, msg)
+    else:
+        # Global notification
+        db.add_notification('all', msg)
+        
+    return jsonify({'success': True})
+
+@app.route('/api/meeting/attend', methods=['POST'])
+def api_meeting_attend():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'success': False, 'message': 'Not logged in'}), 401
+        
+    data = request.json or {}
+    mid = data.get('meeting_id')
+    status = data.get('status', 'Present') # 'Present' or 'Attended'
+    
+    if not mid:
+        return jsonify({'success': False, 'message': 'Meeting ID required'})
+        
+    db.mark_meeting_attendance(mid, user_id, status)
+    
+    # Notify Admin
+    emp = db.get_employee(user_id)
+    name = emp['name'] if emp else user_id
+    notif_msg = f"{name} { 'joined' if status == 'Attended' else 'marked present' } for meeting"
+    db.add_notification('admin', notif_msg)
+    
+    return jsonify({'success': True})
     
     # Send notification to assigned user
     if user_id:
         db.add_notification(user_id, f"New meeting scheduled: {data['title']}")
+        emp = db.get_employee(user_id)
+        if emp and emp.get('email'):
+            email_service.notify_new_meeting(emp['name'], emp['email'], data['title'], data['date'], data['time'])
+    else:
+        # Global meeting - notify all employees
+        employees = db.get_all_employees()
+        for emp in employees:
+            if emp.get('email'):
+                email_service.notify_new_meeting(emp['name'], emp['email'], data['title'], data['date'], data['time'])
         
     return jsonify({'success': True})
+
+@app.route('/api/meetings/<int:mid>', methods=['DELETE'])
+def api_delete_meeting_by_id(mid):
+    if session.get('role') != 'admin' and session.get('user_id') != 'admin':
+        return jsonify({'success': False}), 403
+    try:
+        db.delete_meeting_by_id(mid)
+        return jsonify({'success': True, 'message': 'Meeting deleted'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/admin/meeting/delete', methods=['DELETE'])
 def api_delete_meeting():
@@ -793,4 +953,4 @@ def api_admin_analytics():
 
 if __name__ == '__main__':
     db.init_db()
-    app.run(debug=True, port=5000)
+    app.run(host="0.0.0.0", debug=True, port=5000)

@@ -8,214 +8,305 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- PDF & Canvas Support -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  
+  <!-- Notifications -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/notifications.css') }}">
+  <script src="{{ url_for('static', filename='js/notifications.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
 </head>
-<body class="dark-theme">
+<body class="dash-body">
 
-<div id="toast-container"></div>
+<div id="toast" class="toast">Action completed successfully</div>
 
 <div class="admin-container">
   <!-- Sidebar Navigation -->
-  <aside class="admin-sidebar">
-    <div style="padding:24px;border-bottom:1px solid var(--border);margin-bottom:10px">
+  <aside class="sidebar">
+    <div class="sidebar-brand">
       <div style="display:flex;flex-direction:column;line-height:1.1">
-        <span style="font-size:1.8rem;font-weight:800;background:linear-gradient(135deg,#6366f1,#a855f7);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:1px">KOLOZEN</span>
+        <span style="font-size:1.8rem;font-weight:800;background:linear-gradient(135deg,#6366f1,#a855f7);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:1px">KOLOZEN</span>
         <span style="font-size:0.75rem;color:var(--muted);font-weight:600;letter-spacing:0.5px">Face Attendance</span>
+      </div>
+    </div>
+
+    <!-- Admin Profile Section -->
+    <div class="sidebar-profile">
+      <div class="profile-photo-wrap">
+        <img id="profile-img" 
+             src="/face-image/{{ admin_info.user_id if admin_info else 'ADM-001' }}" 
+             onerror="this.style.display='none';document.getElementById('profile-initials').style.display='flex'"
+             alt="Profile">
+        <div id="profile-initials" class="profile-initials" style="display:none">
+          {{ admin_info.name[0]|upper if admin_info else 'A' }}
+        </div>
+      </div>
+      <div class="profile-name">{{ admin_info.name if admin_info else 'Administrator' }}</div>
+      <div class="profile-id">{{ admin_info.user_id if admin_info else 'ADM-001' }}</div>
+      <div class="profile-status">
+        <span class="status-dot"></span> Online
       </div>
     </div>
     
     <nav class="sidebar-nav">
-      <a href="/admin/attendance" class="nav-btn {{ 'active' if active_tab == 'attendance' else '' }}">
-        <i data-lucide="layout-dashboard"></i><span>Dashboard</span>
+      <a href="/admin/attendance" class="nav-item {{ 'active' if active_tab == 'attendance' else '' }}">
+        <i data-lucide="layout-dashboard" class="nav-icon"></i><span>Dashboard</span>
       </a>
-      <a href="/admin/employees" class="nav-btn {{ 'active' if active_tab == 'employees' else '' }}">
-        <i data-lucide="users"></i><span>Employees</span>
+      <a href="/admin/employees" class="nav-item {{ 'active' if active_tab == 'employees' else '' }}">
+        <i data-lucide="users" class="nav-icon"></i><span>Employees</span>
       </a>
-      <a href="/admin/meetings" class="nav-btn {{ 'active' if active_tab == 'meetings' else '' }}">
-        <i data-lucide="calendar"></i><span>Meetings</span>
+      <a href="/admin/meetings" class="nav-item {{ 'active' if active_tab == 'meetings' else '' }}">
+        <i data-lucide="calendar" class="nav-icon"></i><span>Meetings</span>
       </a>
-      <a href="/admin/leaves" class="nav-btn {{ 'active' if active_tab == 'leaves' else '' }}">
-        <i data-lucide="file-text"></i><span>Leaves</span>
+      <a href="/admin/leaves" class="nav-item {{ 'active' if active_tab == 'leaves' else '' }}">
+        <i data-lucide="file-text" class="nav-icon"></i><span>Leaves</span>
         {% set pending = leave_reqs | selectattr('status','eq','Pending') | list %}
-        {% if pending %}<span class="pending-badge">{{ pending|length }}</span>{% endif %}
+        {% if pending %}<span class="pending-badge" style="background:var(--danger); color:#fff; border-radius:10px; padding:2px 8px; font-size:10px; margin-left:auto">{{ pending|length }}</span>{% endif %}
       </a>
-      <a href="/admin/analytics" class="nav-btn {{ 'active' if active_tab == 'analytics' else '' }}">
-        <i data-lucide="bar-chart-2"></i><span>Analytics</span>
+      <a href="/admin/analytics" class="nav-item {{ 'active' if active_tab == 'analytics' else '' }}">
+        <i data-lucide="bar-chart-2" class="nav-icon"></i><span>Analytics</span>
       </a>
-      <a class="nav-btn {{ 'active' if active_tab == 'projects' else '' }}" href="/admin/projects">
-        <i data-lucide="briefcase"></i><span>Project Assign</span>
+      <a class="nav-item {{ 'active' if active_tab == 'projects' else '' }}" href="/admin/projects">
+        <i data-lucide="briefcase" class="nav-icon"></i><span>Project Assign</span>
       </a>
-      <a href="/admin/db" class="nav-btn {{ 'active' if active_tab == 'db' else '' }}">
-        <i data-lucide="database"></i><span>Database Viewer</span>
+      <a href="/admin/db" class="nav-item {{ 'active' if active_tab == 'db' else '' }}">
+        <i data-lucide="database" class="nav-icon"></i><span>Database Viewer</span>
       </a>
-      
-      <div style="margin-top:auto;padding-top:24px;border-top:1px solid var(--border)">
-        <a href="/logout" class="nav-btn" style="color:var(--danger)">
-          <i data-lucide="log-out"></i><span>Logout</span>
-        </a>
-      </div>
     </nav>
+
+    <div class="sidebar-footer">
+      <a href="/logout" class="nav-item nav-logout" style="color:var(--danger)">
+        <i data-lucide="log-out" class="nav-icon"></i><span>Logout</span>
+      </a>
+    </div>
   </aside>
 
-  <main class="admin-main">
-    <!-- Top Header -->
-    <header class="premium-header">
-      <div class="header-welcome">
-        <h1>Hi {{ admin_info.title if admin_info else '' }} {{ admin_info.name.split(' ')[0] if admin_info else 'Admin' }},</h1>
-        <p>Welcome back to <strong>FaceAttend</strong> Command Center</p>
+  <main class="dash-main">
+    <!-- Top Header (Dashboard Header) -->
+    <div class="dashboard-header">
+      <!-- LEFT: Greeting -->
+      <div>
+        <div class="header-title">Good day, <strong>{{ admin_info.title if admin_info else '' }} {{ admin_info.name.split(' ')[0] if admin_info else 'Admin' }}</strong></div>
+        <div class="header-sub">Administrative Command Center</div>
       </div>
-      
-      <div class="header-controls">
-        <div class="search-bar">
-          <i data-lucide="search" style="width:18px;height:18px;color:var(--text-dim)"></i>
-          <input type="text" id="dashboard-search" oninput="searchDashboard(this.value)" placeholder="Search names, IDs, status...">
-        </div>
-        
+
+      <!-- CENTER: Live date & time -->
+      <div>
+        <div style="font-size:.78rem;color:var(--muted);text-align:center;letter-spacing:.04em" id="live-date"></div>
+        <div style="font-size:1.1rem;font-family:monospace;font-weight:700;text-align:center;letter-spacing:.08em" id="live-time"></div>
+      </div>
+
+      <!-- RIGHT: Controls -->
+      <div style="display:flex;align-items:center;justify-content:flex-end;gap:12px">
         {% if active_tab == 'meetings' %}
-        <button onclick="showMeetingModal()" class="btn btn-primary btn-sm" style="height:40px;padding:0 16px;border-radius:10px">
-          <i data-lucide="plus" style="width:16px;height:16px;margin-right:6px"></i>New Meeting
+        <button onclick="document.getElementById('meeting-modal').classList.add('show')" class="btn btn-primary" style="padding: 10px 20px; border-radius: 10px; font-weight: 600; white-space: nowrap">
+          <i data-lucide="plus" style="width:18px;height:18px;margin-right:6px"></i>New Meeting
         </button>
         {% endif %}
-
-        <!-- Notifications -->
+        
+        {% if active_tab == 'attendance' or not active_tab %}
         <div class="dropdown-container">
-          <div class="control-icon" onclick="toggleDropdown('notif-menu')">
+          <button onclick="toggleNotifications()" class="btn-checkout" style="padding: 10px; border-radius: 50%; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; position: relative">
             <i data-lucide="bell" style="width:18px;height:18px"></i>
-            {% if pending %}
-            <span style="position:absolute;top:8px;right:8px;width:8px;height:8px;background:var(--danger);border-radius:50%;border:2px solid var(--surface)"></span>
+            {% if notifs | length > 0 %}
+            <span style="position:absolute; top:8px; right:8px; width:8px; height:8px; background:var(--danger); border-radius:50%; border:2px solid var(--surface)"></span>
             {% endif %}
-          </div>
-          <div id="notif-menu" class="dropdown-menu">
-            <div style="padding:12px;font-weight:700;border-bottom:1px solid var(--border);margin-bottom:8px">Notifications</div>
-            {% for n in notifs %}
-            <div class="dropdown-item">
-              <i data-lucide="bell" style="color:var(--primary-light)"></i>
-              <div>
-                <div style="font-size:0.8rem;color:var(--text)">{{ n.message }}</div>
-                <div style="font-size:0.65rem;color:var(--text-dim)">{{ n.created_at }}</div>
-              </div>
+          </button>
+          
+          <div id="notificationDropdown" class="notification-dropdown">
+            <div class="notification-header">
+              <h4>Activity Feed</h4>
+              <span class="badge">{{ notifs | length }} New</span>
             </div>
-            {% else %}
-            <div style="padding:20px;text-align:center;color:var(--text-dim);font-size:0.85rem">No new notifications</div>
-            {% endfor %}
+            <div style="max-height: 400px; overflow-y: auto;">
+              {% for n in notifs %}
+              <div class="notification-item">
+                <div class="notif-msg">{{ n.message }}</div>
+                <div class="notif-time">{{ n.created_at }}</div>
+              </div>
+              {% endfor %}
+              {% if not notifs %}
+              <div style="padding: 30px; text-align: center; color: var(--text-dim); font-size: 13px;">
+                No recent activity.
+              </div>
+              {% endif %}
+            </div>
           </div>
         </div>
-
-        <div id="theme-toggle" class="control-icon"><i data-lucide="moon" style="width:18px;height:18px"></i></div>
-        
-        <!-- Profile -->
-        <div class="dropdown-container">
-          <div class="profile-avatar" style="cursor:pointer;width:auto;padding:0 16px;display:flex;align-items:center;gap:10px" onclick="toggleDropdown('profile-menu')">
-            <i data-lucide="user" style="width:18px;height:18px"></i>
-            <span>Admin</span>
-          </div>
-          <div id="profile-menu" class="dropdown-menu">
-            <div style="padding:16px;display:flex;flex-direction:column;align-items:center;text-align:center;border-bottom:1px solid var(--border);margin-bottom:8px">
-              <div class="profile-avatar" style="width:56px;height:56px;font-size:1.2rem;margin-bottom:10px">
-                {% if admin_info and admin_info.face_image %}
-                <img src="data:image/jpeg;base64,{{ admin_info.face_image | b64encode }}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">
-                {% else %}
-                {{ admin_info.name[0] if admin_info else 'A' }}
-                {% endif %}
-              </div>
-              <div style="font-weight:700;font-size:0.95rem;color:var(--text)">{{ admin_info.name if admin_info else 'System Admin' }}</div>
-              <div style="font-size:0.75rem;color:var(--text-dim)">{{ admin_info.email if admin_info else 'admin@faceattend.com' }}</div>
-            </div>
-            <a href="/logout" class="dropdown-item" style="color:var(--danger)"><i data-lucide="log-out"></i>Logout</a>
+        {% endif %}
+        <button id="theme-toggle-btn" onclick="toggleAdminTheme()" class="btn-checkout" style="padding: 10px; border-radius: 50%; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center">
+          <i data-lucide="sun" id="theme-icon" style="width:18px;height:18px"></i>
+        </button>
+        <button onclick="exportDashboardToPDF()" class="btn-checkout">
+          <i data-lucide="download-cloud" style="width:16px;height:16px;margin-right:8px"></i>Export PDF
+        </button>
+        <div class="admin-menu">
+          <button id="adminBtn" class="btn-primary" style="padding: 8px 18px; border-radius: 10px; font-size: 14px">
+            <i data-lucide="shield-check" style="width:16px;height:16px"></i>
+            <span>ADMIN</span>
+          </button>
+          
+          <div id="adminDropdown" class="admin-dropdown">
+            <img src="/face-image/{{ admin_info.user_id if admin_info else 'ADM-001' }}" class="admin-avatar" alt="Admin Badge">
+            <h4>{{ admin_info.name if admin_info else 'Administrator' }}</h4>
+            <p>{{ admin_info.user_id if admin_info else 'ADM-001' }}</p>
+            <span class="role">Administrator</span>
+            <hr>
+            <a href="/logout" class="logout-btn">
+              <i data-lucide="log-out" style="width:16px;height:16px"></i>
+              Logout
+            </a>
           </div>
         </div>
       </div>
-    </header>
+    </div>
 
-    {% set current_tab = active_tab or 'attendance' %}
-    {% if current_tab == 'attendance' %}
-      <div class="dashboard-content">
-        <!-- ROW 1: TOP KPI CARDS -->
-        </div>
+    <div class="main-content">
 
-        <div class="activity-grid" style="grid-template-columns: repeat(4, 1fr); gap: 24px; margin-bottom: 24px;">
+        {% if active_tab == 'attendance' or not active_tab %}
+        <div class="stats-row">
           <!-- Card 1: Total Employees -->
-          <div class="metric-card" onclick="location.href='/admin/employees'" style="cursor:pointer">
-            <div class="metric-icon" style="background:rgba(99,102,241,0.1);color:var(--primary-light)"><i data-lucide="users"></i></div>
-            <div class="metric-value">{{ stats.total }}</div>
-            <div class="metric-label">Total Employees</div>
+          <div class="stat-tile" onclick="location.href='/admin/employees'" style="cursor:pointer; --c: var(--primary)">
+            <div class="stat-icon"><i data-lucide="users" style="color:var(--primary)"></i></div>
+            <div class="stat-body">
+                <div class="stat-label">Total Employees</div>
+                <div class="stat-val">{{ stats.total }}</div>
+            </div>
           </div>
           
           <!-- Card 2: Present Today -->
-          <div class="metric-card">
-            <div class="metric-icon" style="background:rgba(16,185,129,0.1);color:var(--success)"><i data-lucide="user-check"></i></div>
-            <div class="metric-value">{{ stats.present }}</div>
-            <div class="metric-label">Present Today</div>
+          <div class="stat-tile" style="--c: var(--success)">
+            <div class="stat-icon"><i data-lucide="user-check" style="color:var(--success)"></i></div>
+            <div class="stat-body">
+                <div class="stat-label">Present Today</div>
+                <div class="stat-val">{{ stats.present }}</div>
+            </div>
           </div>
 
           <!-- Card 3: Late Today -->
-          <div class="metric-card">
-            <div class="metric-icon" style="background:rgba(245,158,11,0.1);color:var(--warning)"><i data-lucide="clock"></i></div>
-            <div class="metric-value">{{ stats.late }}</div>
-            <div class="metric-label">Late Today</div>
+          <div class="stat-tile" style="--c: var(--warning)">
+            <div class="stat-icon"><i data-lucide="clock" style="color:var(--warning)"></i></div>
+            <div class="stat-body">
+                <div class="stat-label">Late Today</div>
+                <div class="stat-val">{{ stats.late }}</div>
+            </div>
           </div>
 
           <!-- Card 4: Absent Today -->
-          <div class="metric-card">
-            <div class="metric-icon" style="background:rgba(239,68,68,0.1);color:var(--danger)"><i data-lucide="user-x"></i></div>
-            <div class="metric-value">{{ stats.absent }}</div>
-            <div class="metric-label">Absent Today</div>
+          <div class="stat-tile" style="--c: var(--danger)">
+            <div class="stat-icon"><i data-lucide="user-x" style="color:var(--danger)"></i></div>
+            <div class="stat-body">
+                <div class="stat-label">Absent Today</div>
+                <div class="stat-val">{{ stats.absent }}</div>
+            </div>
           </div>
         </div>
 
-        <div class="activity-grid" style="grid-template-columns: 1.5fr 1fr; gap: 24px;">
-           <!-- Today's Attendance Table -->
-           <div class="metric-card">
-              <h3 style="font-size:1.1rem;font-weight:700;margin-bottom:20px">Today's Attendance</h3>
-              <div style="overflow-x:auto">
-                <table class="table">
-                  <thead><tr><th>Employee</th><th>In</th><th>Out</th><th>Status</th></tr></thead>
-                  <tbody>
-                    {% for a in attend %}
-                    <tr class="row-clickable" onclick="location.href='/admin/employee-profile/{{ a.user_id }}'">
-                      <td><strong>{{ a.name }}</strong><div style="font-size:0.7rem;color:var(--text-dim)">{{ a.user_id }}</div></td>
-                      <td style="font-family:monospace">{{ a.check_in or '—' }}</td>
-                      <td style="font-family:monospace">{{ a.check_out or '—' }}</td>
-                      <td><span class="badge badge-{{ a.status | lower if a.status else 'absent' }}">{{ a.status or 'Absent' }}</span></td>
-                    </tr>
-                    {% else %}
-                    <tr><td colspan="4" style="text-align:center;padding:40px;color:var(--text-dim)">No activity yet.</td></tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
-              </div>
-           </div>
 
-           <!-- Recent Activity Feed -->
-           <div class="metric-card">
-              <h3 style="font-size:1.1rem;font-weight:700;margin-bottom:20px">Recent Activity</h3>
-              <div class="activity-feed">
-                {% for r in recent[:6] %}
-                <div class="feed-item row-clickable" onclick="location.href='/admin/employee-profile/{{ r.user_id }}'">
-                  <div class="feed-avatar">{{ r.name[0] }}</div>
-                  <div class="feed-content">
-                    <p><strong>{{ r.name }}</strong> {{ r.status }} at {{ r.check_in }}</p>
-                    <span>Today • Face Recognition</span>
-                  </div>
+        <div class="section">
+          <div class="dash-grid">
+             <!-- COLUMN 1: Today's Attendance Table -->
+             <div class="summary-card">
+                <div class="card-header"><div class="card-title">Today's Attendance</div></div>
+                <div style="overflow-x:auto">
+                  <table class="table">
+                    <thead><tr><th>Employee</th><th>In</th><th>Out</th><th>Status</th></tr></thead>
+                    <tbody>
+                      {% for a in attend %}
+                      <tr class="row-clickable" onclick="location.href='/admin/employee-profile/{{ a.user_id }}'">
+                        <td><strong>{{ a.name }}</strong><div style="font-size:0.7rem;color:var(--text-dim)">{{ a.user_id }}</div></td>
+                        <td style="font-family:monospace">{{ a.check_in or '—' }}</td>
+                        <td style="font-family:monospace">{{ a.check_out or '—' }}</td>
+                        <td><span class="badge badge-{{ a.status | lower if a.status else 'absent' }}">{{ a.status or 'Absent' }}</span></td>
+                      </tr>
+                      {% else %}
+                      <tr><td colspan="4" style="text-align:center;padding:40px;color:var(--text-dim)">No activity yet.</td></tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
                 </div>
-                {% endfor %}
-              </div>
-           </div>
+             </div>
+
+             <!-- COLUMN 2: Recent Activity & Late Employees -->
+             <div style="display:flex; flex-direction:column; gap:16px">
+                <!-- Recent Activity Feed -->
+                <div class="summary-card recent-activity-card" style="margin-bottom:0">
+                    <div class="card-header"><div class="card-title">Recent Activity</div></div>
+                    <div class="activity-feed" id="activity-feed">
+                      {% for r in recent[:10] %}
+                      <div class="activity-item feed-item row-clickable" onclick="location.href='/admin/employee-profile/{{ r.user_id }}'">
+                        <div class="activity-avatar">{{ r.name[0] | upper }}</div>
+                        <div class="activity-content">
+                          <div class="activity-title"><strong>{{ r.name }}</strong> {{ r.status }} at {{ r.check_in }}</div>
+                          <div class="activity-subtitle">Today • Face Recognition</div>
+                        </div>
+                      </div>
+                      {% else %}
+                      <div class="empty-state">No activity yet.</div>
+                      {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Late Employees Standalone Card -->
+                <div class="late-card">
+                    <div class="card-title">Late Employees Today</div>
+                    <div style="overflow-x:auto">
+                        <table class="late-table">
+                            <thead>
+                                <tr style="border-bottom:1px solid rgba(255,255,255,0.05)">
+                                    <th style="text-align:left; font-size:11px; color:var(--muted); padding-bottom:8px">Employee</th>
+                                    <th style="text-align:left; font-size:11px; color:var(--muted); padding-bottom:8px">Time</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% set late_emps = attend | selectattr('status','eq','Late') | list %}
+                                {% for l in late_emps %}
+                                <tr class="row-clickable" onclick="location.href='/admin/employee-profile/{{ l.user_id }}'">
+                                    <td><strong>{{ l.name }}</strong></td>
+                                    <td style="font-family:monospace">{{ l.check_in or '—' }}</td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="2" class="empty-state">No late arrivals today.</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+             </div>
+          </div>
         </div>
       </div>
-    {% elif current_tab == 'analytics' %}
-      <div class="dashboard-content">
-        <!-- TOP: Today Live Status (Mini Cards) -->
-        <div class="metrics-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 32px;">
-          <div class="metric-card" style="border-left: 4px solid var(--success);">
+    {% elif active_tab == 'analytics' %}
+      <div class="dashboard-content" id="analyticsContainer">
+        <!-- ROW 1: TOP: Today Live Status (Mini Cards) -->
+        <div class="analytics-stats">
+          <!-- Card 1: Working Now -->
+          <div class="analytics-card" style="border-left: 4px solid var(--success);">
             <div style="display:flex; justify-content:space-between; align-items:center;">
               <div>
                 <div class="metric-label">Working Now</div>
                 <div class="metric-value">{{ details.live_status.working_now }}</div>
               </div>
-              <i data-lucide="clock" style="color:var(--success); width:32px; height:32px; opacity:0.8"></i>
+              <i data-lucide="activity" class="icon-pulse" style="color:var(--success); width:32px; height:32px; opacity:0.8"></i>
             </div>
           </div>
-          <div class="metric-card" style="border-left: 4px solid var(--primary);">
+          <!-- Card 2: Clocked In -->
+          <div class="analytics-card" style="border-left: 4px solid var(--success);">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <div class="metric-label">Clocked In</div>
+                <div class="metric-value">{{ details.live_status.clocked_in }}</div>
+              </div>
+              <i data-lucide="user-check" style="color:var(--success); width:32px; height:32px; opacity:0.8"></i>
+            </div>
+          </div>
+          <!-- Card 3: Clocked Out -->
+          <div class="analytics-card" style="border-left: 4px solid var(--primary);">
             <div style="display:flex; justify-content:space-between; align-items:center;">
               <div>
                 <div class="metric-label">Clocked Out</div>
@@ -224,89 +315,73 @@
               <i data-lucide="log-out" style="color:var(--primary); width:32px; height:32px; opacity:0.8"></i>
             </div>
           </div>
-          <div class="metric-card" style="border-left: 4px solid var(--danger);">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <div>
-                <div class="metric-label">Not Checked In</div>
-                <div class="metric-value">{{ details.live_status.not_logged }}</div>
-              </div>
-              <i data-lucide="user-minus" style="color:var(--danger); width:32px; height:32px; opacity:0.8"></i>
-            </div>
+        </div>
+
+        <!-- ROW 2: Breakdown & Weekly Attendance -->
+        <div class="analytics-grid">
+          <div class="analytics-card">
+            <h3>Attendance Breakdown</h3>
+            <canvas id="chart-att-dist" style="max-height: 300px; width: 100%"></canvas>
+          </div>
+          <div class="analytics-card">
+            <h3>Weekly Attendance</h3>
+            <canvas id="chart-weekly-att" style="max-height: 300px; width: 100%"></canvas>
           </div>
         </div>
 
-        <!-- ROW 1: Breakdown & Monthly Trend -->
-        <div class="activity-grid" style="grid-template-columns: 1fr 2fr; gap: 24px; margin-bottom: 24px;">
-          <div class="metric-card" style="padding: 24px;">
-            <h3 style="font-size:1rem;font-weight:700;margin-bottom:16px">Attendance Breakdown</h3>
-            <div id="chart-att-dist" style="height:300px; width:100%"></div>
+        <!-- ROW 3: Late Trend & Working Hours -->
+        <div class="analytics-grid">
+          <div class="analytics-card">
+            <h3>Weekly Late Arrivals</h3>
+            <canvas id="chart-late-trend" style="max-height: 300px; width: 100%"></canvas>
           </div>
-          <div class="metric-card" style="padding: 24px;">
-            <h3 style="font-size:1rem;font-weight:700;margin-bottom:16px">Weekly Attendance (Present Employees)</h3>
-            <div id="chart-monthly-trend" style="height:300px; width:100%"></div>
-          </div>
-        </div>
-
-        <!-- ROW 2: Late Trend & Working Hours -->
-        <div class="activity-grid" style="grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
-          <div class="metric-card" style="padding: 24px;">
-            <h3 style="font-size:1rem;font-weight:700;margin-bottom:16px">Weekly Late Arrivals</h3>
-            <div id="chart-late-trend" style="height:250px; width:100%"></div>
-          </div>
-          <div class="metric-card" style="padding: 24px;">
-            <h3 style="font-size:1rem;font-weight:700;margin-bottom:16px">Total Working Hours (This Month)</h3>
-            <div id="chart-working-hours" style="height:250px; width:100%"></div>
+          <div class="analytics-card">
+            <h3>Total Working Hours (This Month)</h3>
+            <canvas id="chart-working-hours" style="max-height: 300px; width: 100%"></canvas>
           </div>
         </div>
 
-        <!-- ROW 3: Leave Tracking & Top Lists -->
-        <div class="activity-grid" style="grid-template-columns: 1fr 1.5fr; gap: 24px;">
-          <!-- Leave Tracking -->
-          <div class="metric-card" style="padding: 24px;">
-            <h3 style="font-size:1rem;font-weight:700;margin-bottom:16px">Leave Distributions</h3>
-            <div id="chart-leave-bar" style="height:350px; width:100%"></div>
+        <!-- ROW 4: Leave Tracking & Top Present -->
+        <div class="analytics-grid">
+          <div class="analytics-card">
+            <h3>Leave Distribution</h3>
+            <canvas id="chart-leave-dist" style="max-height: 350px; width: 100%"></canvas>
           </div>
-          
-          <!-- Performance Lists -->
-          <div style="display:flex; flex-direction:column; gap:24px;">
-            <!-- Top Present -->
-            <div class="metric-card" style="flex:1">
-              <div class="card-header" style="padding: 16px 20px; border-bottom: 1px solid var(--border)">
-                <h3 style="font-size:0.95rem;font-weight:700">Top Present Employees</h3>
-              </div>
-              <div style="padding: 12px">
+          <div class="analytics-card">
+            <h3>Top Present Employees</h3>
+            <div class="performance-list">
                 {% for p in top_performers[:5] %}
-                <div style="display:flex; justify-content:space-between; align-items:center; padding: 10px; background:var(--surface2); border-radius:8px; margin-bottom:8px">
-                    <span style="font-weight:600">{{ p.name }}</span>
+                <div class="performance-item">
+                    <span class="name">{{ p.name }}</span>
                     <span class="badge badge-success">{{ p.pct }}% Attendance</span>
                 </div>
                 {% endfor %}
-              </div>
             </div>
-            <!-- Frequent Late -->
-            <div class="metric-card" style="flex:1">
-              <div class="card-header" style="padding: 16px 20px; border-bottom: 1px solid var(--border); border-left: 3px solid var(--warning)">
-                <h3 style="font-size:0.95rem;font-weight:700">Frequent Late Employees</h3>
-              </div>
-              <div style="padding: 12px">
+          </div>
+        </div>
+
+        <!-- ROW 5: Frequent Late -->
+        <div class="analytics-card" style="margin-top: 16px;">
+            <div class="card-header" style="border-bottom: 0; padding: 0; margin-bottom: 20px;">
+                <h3 style="margin-bottom: 0;">Frequent Late Employees</h3>
+            </div>
+            <div class="performance-list">
                 {% if details.frequent_late_analytics and details.frequent_late_analytics.labels %}
                 {% for i in range(details.frequent_late_analytics.labels|length) %}
-                <div style="display:flex; justify-content:space-between; align-items:center; padding: 10px; background:var(--surface2); border-radius:8px; margin-bottom:8px">
-                    <span style="font-weight:600">{{ details.frequent_late_analytics.labels[i] }}</span>
+                <div class="performance-item" style="border-left: 3px solid var(--warning)">
+                    <span class="name">{{ details.frequent_late_analytics.labels[i] }}</span>
                     <span class="badge badge-warning">{{ details.frequent_late_analytics.data[i] }} Times Late</span>
                 </div>
                 {% endfor %}
                 {% else %}
-                <p class="text-muted" style="text-align:center; padding:20px">No late data for this month.</p>
+                <div class="empty-state">No late data for this month.</div>
                 {% endif %}
-              </div>
             </div>
-          </div>
         </div>
       </div>
     {% else %}
       <div class="dashboard-content">
-        {% if current_tab == 'employees' %}
+        {% if active_tab == 'employees' %}
            <div class="metric-card">
              <div class="flex-between mb-4">
               <h3 style="font-size:1.1rem;font-weight:700">All Employees</h3>
@@ -331,84 +406,141 @@
               </tbody>
             </table>
            </div>
-        {% elif current_tab == 'meetings' %}
-           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:24px">
+        {% elif active_tab == 'meetings' %}
+           <div class="meetings-grid" id="meetingsContainer">
             {% for m in meetings %}
-            <div class="metric-card">
-              {% if m.meeting_date == today_str %}
-              <div style="position:absolute;top:12px;left:12px;background:var(--success);color:#fff;font-size:0.6rem;padding:2px 6px;border-radius:4px;font-weight:700">TODAY</div>
-              {% endif %}
-              <div style="font-weight:700;font-size:1.1rem;margin-bottom:8px">{{ m.title }}</div>
-              <div class="text-muted" style="font-size:0.85rem">{{ m.meeting_date }} at {{ m.meeting_time }}</div>
-              <button onclick="deleteMeeting('{{ m.title }}','{{ m.meeting_date }}','{{ m.user_id or '' }}')" style="position:absolute;top:24px;right:24px;background:none;border:none;color:var(--danger);cursor:pointer">
-                <i data-lucide="trash-2" style="width:18px;height:18px"></i>
+            <div class="meeting-card" data-title="{{ m.title | lower }}" id="meeting-card-{{ m.id }}">
+              <div class="meeting-type-badge {{ 'virtual' if m.meeting_type == 'Virtual' else 'physical' }}">
+                {{ m.meeting_type }}
+              </div>
+              <button onclick="deleteMeeting('{{ m.id }}', event)" class="meeting-delete">
+                <i data-lucide="trash-2" style="width:16px;height:16px"></i>
               </button>
-              <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px;font-size:0.75rem;color:var(--text-dim)">
+              
+              <h3 class="meeting-title">{{ m.title }}</h3>
+              <p>{{ m.meeting_date }} at {{ m.meeting_time }}</p>
+              
+              {% if m.meeting_type == 'Virtual' %}
+                <div style="font-size:0.75rem; color:var(--primary-light); margin-bottom:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">
+                  <i data-lucide="link" style="width:12px;height:12px;margin-right:4px"></i>{{ m.meeting_link }}
+                </div>
+              {% else %}
+                <div style="font-size:0.75rem; color:var(--warning); margin-bottom:10px">
+                  <i data-lucide="map-pin" style="width:12px;height:12px;margin-right:4px"></i>{{ m.location }}
+                </div>
+              {% endif %}
+
+              <div class="meeting-stats-row">
+                <div class="m-stat"><label>Invited</label><span>{{ m.stats.total_invited }}</span></div>
+                <div class="m-stat"><label>Attended</label><span style="color:var(--success)">{{ m.stats.attended }}</span></div>
+                <div class="m-stat"><label>Absent</label><span style="color:var(--danger)">{{ m.stats.absent }}</span></div>
+              </div>
+              
+              <div class="meeting-meta">
                 <i data-lucide="{{ 'user' if m.user_id else 'users' }}" style="width:14px;height:14px"></i>
                 <span>{{ m.user_id if m.user_id else 'All Employees' }}</span>
               </div>
             </div>
             {% endfor %}
+            {% if not meetings %}
+            <div class="empty-state" style="grid-column: 1 / -1; padding: 60px;">
+              <i data-lucide="calendar" style="width:48px;height:48px;opacity:0.2;margin-bottom:16px"></i>
+              <p>No meetings scheduled yet.</p>
+            </div>
+            {% endif %}
            </div>
-        {% elif current_tab == 'leaves' %}
-           <div class="metric-card">
+        {% elif active_tab == 'leaves' %}
+           <div class="card">
              <h3 style="font-size:1.1rem;font-weight:700;margin-bottom:20px">Leave Requests</h3>
-             <table class="table">
-              <thead><tr><th>Employee</th><th>Type</th><th>Status</th><th>Actions</th></tr></thead>
-              <tbody>
-                {% for lr in leave_reqs %}
-                <tr>
-                  <td>{{ lr.employee_name or lr.user_id }}</td><td>{{ lr.leave_type }}</td>
-                  <td>
-                    {% set ls = lr.status or 'Pending' %}
-                    <span class="badge badge-{{ ls | lower }}">{{ ls }}</span>
-                  </td>
-                  <td>
-                    {% if lr.status == 'Pending' %}
-                    <button onclick="leaveAction('{{ lr.user_id }}','{{ lr.from_date }}','approve')" class="btn btn-success btn-sm">Approve</button>
-                    <button onclick="leaveAction('{{ lr.user_id }}','{{ lr.from_date }}','reject')" class="btn btn-danger btn-sm">Reject</button>
-                    {% endif %}
-                  </td>
-                </tr>
-                {% endfor %}
-              </tbody>
-             </table>
+           <table class="leave-table">
+            <thead>
+              <tr>
+                <th>User ID</th>
+                <th>Employee</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% if leave_reqs|length == 0 %}
+              <tr>
+                <td colspan="5" class="no-data">
+                  No Leave Requests
+                </td>
+              </tr>
+              {% endif %}
+              {% for lr in leave_reqs %}
+              <tr>
+                <td style="font-family:monospace; font-size:0.85rem; color:var(--primary-light)">{{ lr.user_id }}</td>
+                <td><strong>{{ lr.employee_name or lr.user_id }}</strong></td>
+                <td>{{ lr.leave_type }}</td>
+                <td>
+                  {% set ls = lr.status or 'Pending' %}
+                  <span class="{{ ls | lower }}">{{ ls }}</span>
+                </td>
+                 <td>
+                   {% if lr.status == 'Pending' %}
+                     <button onclick="leaveAction('{{ lr.user_id }}','{{ lr.from_date }}','approve')" class="approve-btn">Approve</button>
+                     <button onclick="leaveAction('{{ lr.user_id }}','{{ lr.from_date }}','reject')" class="reject-btn">Reject</button>
+                   {% endif %}
+                 </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+           </table>
            </div>
-        {% elif current_tab == 'activity' or current_tab == 'reports' %}
+        {% elif active_tab == 'activity' or active_tab == 'reports' %}
            <div class="metric-card" style="padding:100px;text-align:center">
              <i data-lucide="bar-chart-2" style="width:64px;height:64px;color:var(--primary);margin-bottom:24px"></i>
-             <h2>{{ current_tab | capitalize }} Detailed View</h2>
-             <p class="text-muted">Extensive {{ current_tab }} monitoring and exports are coming soon.</p>
+             <h2>{{ active_tab | capitalize }} Detailed View</h2>
+             <p class="text-muted">Extensive {{ active_tab }} monitoring and exports are coming soon.</p>
              <button onclick="location.href='/admin/attendance'" class="btn btn-primary mt-6">Return to Overview</button>
            </div>
             </div>
         {% endif %}
       </div>
     {% endif %}
+    </div> <!-- End admin-dashboard-wrapper -->
   </main>
 </div>
 
 <!-- Meeting Modal -->
-<div id="meeting-modal" class="modal-overlay hidden">
-  <div class="modal-content" style="max-width:400px">
-    <h3>Schedule Meeting</h3>
+<div id="meeting-modal" class="modal-overlay">
+  <div class="modal-box">
+    <h3 style="margin-top:0;margin-bottom:20px">Schedule Meeting</h3>
     <div id="meeting-err" class="alert alert-danger" style="display:none;margin-bottom:15px"></div>
     <div class="form-group"><label>Title</label><input id="m-title" class="form-control" placeholder="Project Sync"></div>
     <div class="form-group"><label>Date</label><input type="date" id="m-date" class="form-control"></div>
     <div class="form-group"><label>Time</label><input type="time" id="m-time" class="form-control"></div>
+    <div class="form-group">
+      <label>Meeting Type</label>
+      <select id="m-type" class="form-control" onchange="toggleMeetingFields()">
+        <option value="Physical">Physical</option>
+        <option value="Virtual">Virtual</option>
+      </select>
+    </div>
+    <div id="m-link-group" class="form-group" style="display:none">
+      <label>Meeting Link</label>
+      <input id="m-link" class="form-control" placeholder="https://meet.google.com/xxx">
+    </div>
+    <div id="m-loc-group" class="form-group">
+      <label>Location</label>
+      <input id="m-loc" class="form-control" placeholder="Conference Room A">
+    </div>
     <div class="form-group"><label>Assign to Employee ID (optional)</label><input id="m-emp" class="form-control" placeholder="emp123"></div>
     <div class="form-group"><label>Description</label><textarea id="m-desc" class="form-control" rows="2"></textarea></div>
-    <div class="modal-actions">
-      <button onclick="document.getElementById('meeting-modal').classList.add('hidden')" class="btn btn-ghost">Cancel</button>
+    <div class="modal-actions" style="margin-top:24px;display:flex;gap:12px;justify-content:flex-end">
+      <button onclick="document.getElementById('meeting-modal').classList.remove('show')" class="btn btn-ghost">Cancel</button>
       <button onclick="saveMeeting()" class="btn btn-primary">Schedule</button>
     </div>
   </div>
 </div>
 
 <!-- Add Employee Modal -->
-<div id="employee-modal" class="modal-overlay hidden">
-  <div class="modal-content" style="max-width:400px">
-    <h3>Add New Employee</h3>
+<div id="employee-modal" class="modal-overlay">
+  <div class="modal-box">
+    <h3 style="margin-top:0;margin-bottom:20px">Add New Employee</h3>
     <div class="form-group"><label>Employee ID</label><input id="e-id" class="form-control" placeholder="emp101"></div>
     <div class="form-group"><label>Full Name</label><input id="e-name" class="form-control" placeholder="John Doe"></div>
     <div class="form-group"><label>Email Address</label><input id="e-email" class="form-control" placeholder="john@company.com"></div>
@@ -419,23 +551,27 @@
         <option value="admin">Administrator</option>
       </select>
     </div>
-    <div class="modal-actions">
-      <button onclick="document.getElementById('employee-modal').classList.add('hidden')" class="btn btn-ghost">Cancel</button>
+    <div class="modal-actions" style="margin-top:24px;display:flex;gap:12px;justify-content:flex-end">
+      <button onclick="document.getElementById('employee-modal').classList.remove('show')" class="btn btn-ghost">Cancel</button>
       <button onclick="saveEmployee()" class="btn btn-primary">Save Employee</button>
     </div>
   </div>
 </div>
 
 
+        </div> <!-- End main-content -->
+    </main>
+</div>
+
 <!-- Scripts -->
 <script>
+  // Sync analytics data from backend
   window.ADMIN_DATA = {
-    trend: {{ admin_analytics | tojson }},
-    details: {{ details | tojson }}
+    trend: JSON.parse('{{ admin_analytics | tojson | safe if admin_analytics else "{}" }}'),
+    details: JSON.parse('{{ details | tojson | safe if details else "{}" }}')
   };
 </script>
 <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
 <script src="{{ url_for('static', filename='js/admin_analytics.js') }}"></script>
-<script>lucide.createIcons();</script>
 </body>
 </html>

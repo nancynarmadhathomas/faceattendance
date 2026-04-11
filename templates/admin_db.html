@@ -7,6 +7,13 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+    
+    <!-- Notifications -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/notifications.css') }}">
+    <script src="{{ url_for('static', filename='js/notifications.js') }}"></script>
     <style>
         .db-layout {
             display: grid;
@@ -103,64 +110,112 @@
         }
     </style>
 </head>
-<body class="dark-theme">
+<body class="dash-body">
 
 <div class="admin-container">
-    <!-- Sidebar Navigation (Main) -->
-    <aside class="admin-sidebar">
-        <div style="padding:24px;border-bottom:1px solid var(--border);margin-bottom:10px">
-            <div style="display:flex;flex-direction:column;line-height:1.1">
-                <span style="font-size:1.8rem;font-weight:800;background:linear-gradient(135deg,#6366f1,#a855f7);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:1px">KOLOZEN</span>
-                <span style="font-size:0.75rem;color:var(--muted);font-weight:600;letter-spacing:0.5px">Face Attendance</span>
-            </div>
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div style="display:flex;flex-direction:column;line-height:1.1">
+          <span style="font-size:1.8rem;font-weight:800;background:linear-gradient(135deg,#6366f1,#a855f7);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:1px">KOLOZEN</span>
+          <span style="font-size:0.75rem;color:var(--muted);font-weight:600;letter-spacing:0.5px">Face Attendance</span>
         </div>
-        
-        <nav class="sidebar-nav">
-            <a href="/admin/attendance" class="nav-btn">
-                <i data-lucide="layout-dashboard"></i><span>Dashboard</span>
-            </a>
-            <a href="/admin/employees" class="nav-btn">
-                <i data-lucide="users"></i><span>Employees</span>
-            </a>
-            <a href="/admin/meetings" class="nav-btn">
-                <i data-lucide="calendar"></i><span>Meetings</span>
-            </a>
-            <a href="/admin/leaves" class="nav-btn">
-                <i data-lucide="file-text"></i><span>Leaves</span>
-            </a>
-            <a href="/admin/analytics" class="nav-btn">
-                <i data-lucide="bar-chart-2"></i><span>Analytics</span>
-            </a>
-            <a href="/admin/projects" class="nav-btn">
-                <i data-lucide="briefcase"></i><span>Project Assign</span>
-            </a>
-            <a href="/admin/db" class="nav-btn active">
-                <i data-lucide="database"></i><span>Database Viewer</span>
-            </a>
-            
-            <div style="margin-top:auto;padding-top:24px;border-top:1px solid var(--border)">
-                <a href="/logout" class="nav-btn" style="color:var(--danger)">
-                    <i data-lucide="log-out"></i><span>Logout</span>
-                </a>
-            </div>
-        </nav>
+      </div>
+
+      <!-- Admin Profile Section -->
+      <div class="sidebar-profile">
+        <div class="profile-photo-wrap">
+          <img id="profile-img" 
+               src="/face-image/{{ admin_info.user_id if admin_info else 'ADM-001' }}" 
+               onerror="this.style.display='none';document.getElementById('profile-initials').style.display='flex'"
+               alt="Profile">
+          <div id="profile-initials" class="profile-initials" style="display:none">
+            {{ admin_info.name[0]|upper if admin_info else 'A' }}
+          </div>
+        </div>
+        <div class="profile-name">{{ admin_info.name if admin_info else 'Administrator' }}</div>
+        <div class="profile-id">{{ admin_info.user_id if admin_info else 'ADM-001' }}</div>
+        <div class="profile-status">
+          <span class="status-dot"></span> Online
+        </div>
+      </div>
+      
+      <nav class="sidebar-nav">
+        <a href="/admin/attendance" class="nav-item">
+          <i data-lucide="layout-dashboard" class="nav-icon"></i><span>Dashboard</span>
+        </a>
+        <a href="/admin/employees" class="nav-item">
+          <i data-lucide="users" class="nav-icon"></i><span>Employees</span>
+        </a>
+        <a href="/admin/meetings" class="nav-item">
+          <i data-lucide="calendar" class="nav-icon"></i><span>Meetings</span>
+        </a>
+        <a href="/admin/leaves" class="nav-item">
+          <i data-lucide="file-text" class="nav-icon"></i><span>Leaves</span>
+        </a>
+        <a href="/admin/analytics" class="nav-item">
+          <i data-lucide="bar-chart-2" class="nav-icon"></i><span>Analytics</span>
+        </a>
+        <a href="/admin/projects" class="nav-item">
+          <i data-lucide="briefcase" class="nav-icon"></i><span>Project Assign</span>
+        </a>
+        <a href="/admin/db" class="nav-item active">
+          <i data-lucide="database" class="nav-icon"></i><span>Database Viewer</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <a href="/logout" class="nav-item nav-logout" style="color:var(--danger)">
+          <i data-lucide="log-out" class="nav-icon"></i><span>Logout</span>
+        </a>
+      </div>
     </aside>
 
-    <main class="admin-main">
-        <!-- Top Header -->
-        <header class="premium-header">
-            <div class="header-welcome">
-                <h1>Database Viewer</h1>
-                <p>Advanced system inspection & raw data access (Read-Only)</p>
+    <main class="dash-main">
+        <!-- Top Header (Dashboard Header) -->
+        <div class="dashboard-header">
+          <!-- LEFT: Title -->
+          <div>
+            <div class="header-title"><strong>Database Viewer</strong></div>
+            <div class="header-sub">Administrative System Explorer</div>
+          </div>
+
+          <!-- CENTER: Live date & time -->
+          <div>
+            <div style="font-size:.78rem;color:var(--muted);text-align:center;letter-spacing:.04em" id="live-date"></div>
+            <div style="font-size:1.1rem;font-family:monospace;font-weight:700;text-align:center;letter-spacing:.08em" id="live-time"></div>
+          </div>
+
+          <!-- RIGHT: Controls -->
+          <div style="display:flex;align-items:center;justify-content:flex-end;gap:12px">
+            <button id="theme-toggle-btn" onclick="toggleAdminTheme()" class="btn-checkout" style="padding: 10px; border-radius: 50%; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center">
+              <i data-lucide="sun" id="theme-icon" style="width:18px;height:18px"></i>
+            </button>
+            <button onclick="exportDashboardToPDF()" class="btn-checkout">
+              <i data-lucide="download-cloud" style="width:16px;height:16px;margin-right:8px"></i>Export Full DB
+            </button>
+            <div class="admin-menu">
+              <button id="adminBtn" class="btn-primary" style="padding: 8px 18px; border-radius: 10px; font-size: 14px">
+                <i data-lucide="shield-check" style="width:16px;height:16px"></i>
+                <span>ADMIN</span>
+              </button>
+              
+              <div id="adminDropdown" class="admin-dropdown">
+                <img src="/face-image/{{ admin_info.user_id if admin_info else 'ADM-001' }}" class="admin-avatar" alt="Admin Badge">
+                <h4>{{ admin_info.name if admin_info else 'Administrator' }}</h4>
+                <p>{{ admin_info.user_id if admin_info else 'ADM-001' }}</p>
+                <span class="role">Administrator</span>
+                <hr>
+                <a href="/logout" class="logout-btn">
+                  <i data-lucide="log-out" style="width:16px;height:16px"></i>
+                  Logout
+                </a>
+              </div>
             </div>
-            
-            <div class="header-controls">
-                <div id="theme-toggle" class="control-icon"><i data-lucide="moon"></i></div>
-                <div class="user-profile-toggle">
-                    <div class="avatar">{{ admin_info.name[0] if admin_info else 'A' }}</div>
-                </div>
-            </div>
-        </header>
+          </div>
+        </div>
+
+        <div class="main-content">
 
         <!-- DB Layout -->
         <div class="db-layout">
@@ -230,23 +285,13 @@
                 </div>
             </div>
         </div>
+        </div> <!-- End main-content -->
     </main>
 </div>
 
+<script src="{{ url_for('static', filename='js/admin.js') }}"></script>
 <script>
-    lucide.createIcons();
-    
-    // Simple theme toggle if needed (matching main dashboard)
-    document.getElementById('theme-toggle').onclick = function() {
-        document.body.classList.toggle('dark-theme');
-        const icon = this.querySelector('i');
-        if (document.body.classList.contains('dark-theme')) {
-            icon.setAttribute('data-lucide', 'moon');
-        } else {
-            icon.setAttribute('data-lucide', 'sun');
-        }
-        lucide.createIcons();
-    };
+    if (typeof lucide !== 'undefined') lucide.createIcons();
 </script>
 
 </body>

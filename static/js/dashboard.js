@@ -61,8 +61,8 @@ function updateDashboardUI(data) {
   if (outTimeVal) outTimeVal.textContent = formatTime(state.check_out_time);
 
   // 4. Working Hours Timer Logic
-  if (state.checked_in && state.check_in_time) {
-    startWorkingHoursTimer(state.check_in_time);
+  if (state.checked_in && (state.check_in_raw || state.check_in_time)) {
+    startWorkingHoursTimer(state.check_in_raw || state.check_in_time);
   } else {
     stopWorkingHoursTimer();
     const liveHrs = document.getElementById('live-hours');
@@ -78,11 +78,15 @@ function startWorkingHoursTimer(checkInTimeStr) {
   const progBar = document.getElementById('work-progress-bar');
   const progLabel = document.getElementById('progress-label');
 
-  // Parse Today's date + checkInTimeStr
-  const now = new Date();
-  const timeParts = checkInTimeStr.split(':');
-  const checkInDate = new Date();
-  checkInDate.setHours(parseInt(timeParts[0]), parseInt(timeParts[1]), parseInt(timeParts[2] || 0), 0);
+  // Parse checkInTimeStr
+  let checkInDate = new Date(checkInTimeStr);
+  
+  if (isNaN(checkInDate.getTime())) {
+    // Fallback if not ISO (e.g. HH:MM:SS)
+    const timeParts = checkInTimeStr.split(':');
+    checkInDate = new Date();
+    checkInDate.setHours(parseInt(timeParts[0]), parseInt(timeParts[1]), parseInt(timeParts[2] || 0), 0);
+  }
 
   timerInterval = setInterval(() => {
     const current = new Date();
@@ -181,15 +185,14 @@ async function doCheckin() {
         document.getElementById('late-modal').classList.remove('hidden');
       }
       updateDashboardUI(data);
-      // Optional toast
-      console.log('Clocked in successfully');
+      showToast('Clocked in successfully', 'success');
     } else {
-      alert('❌ ' + (data.message || 'Clock-in failed.'));
+      showToast(data.message || 'Clock-in failed', 'error');
       btn.disabled = false;
       btn.innerHTML = originalText;
     }
   } catch (e) {
-    alert('Server error. Please try again.');
+    showToast('Server error. Please try again.', 'error');
     btn.disabled = false;
     btn.innerHTML = originalText;
   }
@@ -201,7 +204,7 @@ async function confirmLateReason() {
   const reason = select ? select.value : '';
   
   if (!reason) {
-    alert('⚠️ Please select a reason for late arrival.');
+    showToast('Please select a reason for late arrival', 'warning');
     return;
   }
 
@@ -221,15 +224,13 @@ async function confirmLateReason() {
     const data = await res.json();
     
     if (data.success) {
-      console.log('Late reason captured:', reason);
+      showToast('Late reason captured', 'success');
       document.getElementById('late-modal').classList.add('hidden');
-      // Success feedback (optional toast could go here)
     } else {
-      alert('❌ Failed to save reason. Please try again.');
+      showToast('Failed to save reason', 'error');
     }
   } catch (e) {
-    console.error('Error in confirmLateReason:', e);
-    alert('Server error. Please try again.');
+    showToast('Server error', 'error');
   } finally {
     if (btn) {
       btn.disabled = false;
@@ -251,12 +252,15 @@ async function doCheckout() {
     const data = await res.json();
     if (data.success) {
       updateDashboardUI(data);
-      alert('✅ Clocked out! You worked ' + data.working_hours + ' hour(s) today.');
+      showToast('Clocked out successfully', 'success');
+      setTimeout(() => location.reload(), 1000); 
     } else {
+      showToast(data.message || 'Clock-out failed', 'error');
       btn.disabled = false;
       btn.innerHTML = originalText;
     }
   } catch (e) {
+    showToast('Server error', 'error');
     btn.disabled = false;
     btn.innerHTML = originalText;
   }
@@ -353,7 +357,7 @@ async function respondMeeting(meeting_id, status, reason = null) {
       alert('❌ Failed to save response.');
     }
   } catch (e) {
-    alert('Server error. Please try again.');
+    showToast('Server error. Please try again.', 'error');
   }
 }
 
@@ -366,7 +370,7 @@ function openDeclineModal(meeting_id) {
 async function submitDecline() {
   const reason = document.getElementById('decline-reason').value.trim();
   if (!reason) {
-    alert('Please enter a reason for declining.');
+    showToast('Please enter a reason for declining', 'warning');
     return;
   }
   await respondMeeting(current_meeting_id, 'declined', reason);
@@ -383,13 +387,13 @@ async function respondProject(project_id, response) {
     });
     const result = await res.json();
     if (result.success) {
-      alert(`Response: ${response} saved!`);
-      location.reload();
+      showToast(`Response: ${response} saved!`, 'success');
+      setTimeout(() => location.reload(), 1000);
     } else {
-      alert('❌ Failed to save response.');
+      showToast('Failed to save response', 'error');
     }
   } catch (e) {
-    alert('Server error. Please try again.');
+    showToast('Server error. Please try again.', 'error');
   }
 }
 
@@ -441,6 +445,43 @@ function handleNotificationClick(text, type, projectId, el) {
     window.location.href = '/dashboard';
   }
 }
+// ── Hybrid Meetings ───────────────────────────────────────────────
+async function joinMeeting(meetingId, link) {
+  if (link && link !== 'None') {
+    window.open(link, '_blank');
+  }
+  
+  try {
+    const res = await fetch('/api/meeting/attend', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ meeting_id: meetingId, status: 'Attended' })
+    });
+    const result = await res.json();
+    if (result.success) {
+      showToast('Meeting joined and attended!', 'success');
+      setTimeout(() => location.reload(), 1500);
+    }
+  } catch (e) {
+    console.error('Attendance error:', e);
+  }
+}
 
-
-
+async function markMeetingPresent(meetingId) {
+  try {
+    const res = await fetch('/api/meeting/attend', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ meeting_id: meetingId, status: 'Present' })
+    });
+    const result = await res.json();
+    if (result.success) {
+      showToast('You have been marked present!', 'success');
+      setTimeout(() => location.reload(), 1200);
+    } else {
+      showToast('Failed to mark attendance', 'error');
+    }
+  } catch (e) {
+    showToast('Network error', 'error');
+  }
+}
